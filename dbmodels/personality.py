@@ -3,7 +3,6 @@ from typing import List, Optional, Dict, Union
 from enum import Enum
 from datetime import datetime
 
-#UNIVERSAL ACTION MODELS
 class GameType(str, Enum):
     FIGHTING = "fighting"
     BADMINTON = "badminton"
@@ -35,9 +34,7 @@ class RacingAction(UniversalAction):
     overtaking_attempt: bool = False
     crash_occurred: bool = False
 
-## PERSONALITY PROFILE MODELS
 class UnifiedPersonality(BaseModel):
-    # Core Traits (0.0 - 1.0)
     aggression_level: float = Field(0.5, ge=0.0, le=1.0)
     risk_tolerance: float = Field(0.5, ge=0.0, le=1.0)
     analytical_thinking: float = Field(0.5, ge=0.0, le=1.0)
@@ -47,7 +44,6 @@ class UnifiedPersonality(BaseModel):
     strategic_thinking: float = Field(0.5, ge=0.0, le=1.0)
     adaptability: float = Field(0.5, ge=0.0, le=1.0)
     
-    # Metadata
     confidence_score: float = Field(0.0, ge=0.0, le=1.0)
     total_actions_analyzed: int = 0
     games_played: List[str] = []
@@ -60,7 +56,6 @@ class BehavioralFeature(BaseModel):
     game_source: str
     description: Optional[str] = None
 
-# REQUEST/RESPONSE MODELS
 class UniversalAnalysisRequest(BaseModel):
     session_id: str
     fighting_actions: List[FightingAction] = []

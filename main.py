@@ -8,12 +8,12 @@ from datetime import datetime
 
 from config import settings
 from databaseconn import get_db,engine,Base
-from models.personality import(
+from dbmodels.personality import(
     UniversalAnalysisRequest, UnifiedPersonality, 
     GameSpecificAnalysisRequest, CrossGameAIRequest, CrossGameAIResponse,
     MultiGameState, GameType
 )
-from models.games import GameSession, PlayerAction, PersonalityProfile
+from dbmodels.games import GameSession, PlayerAction, PersonalityProfile
 
 from services.personality_analyzer import MultiGameAnalyzer
 from services.crossgame_strategy import CrossGameStrategySelector

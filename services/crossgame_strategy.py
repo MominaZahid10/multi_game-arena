@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from models.personality import GameType, UnifiedPersonality
+from dbmodels.personality import GameType, UnifiedPersonality
 
 class CrossGameStrategySelector:
     """
