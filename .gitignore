@@ -1,2 +1,41 @@
+# --- Environment Variables ---
+.env
+
+# --- Virtual Environments ---
+venv/
+env/
+
+# --- Python Cache ---
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+
+# --- Jupyter Notebook Checkpoints ---
+.ipynb_checkpoints/
+
+# --- IDE/Editor Settings ---
+.vscode/
+.idea/
+
+# --- Data Files ---
+*.csv
+*.tsv
+*.parquet
+*.xlsx
+*.xls
+*.json
+*.zip
+
+# --- Logs and Dumps ---
+*.log
+*.out
+*.bak
+
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+
+# --- Database Files ---
+*.db
+*.sqlite3
