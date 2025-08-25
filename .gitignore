@@ -39,4 +39,4 @@ Thumbs.db
 
 # --- Database Files ---
 *.db
-*.sqlite3*.pkl
+*.sqlite3
