@@ -1,25 +1,59 @@
-# --- Environment Variables ---
+# ================================
+# Logs
+# ================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.out
+*.bak
+
+# ================================
+# Node.js (Frontend)
+# ================================
+node_modules
+dist
+dist-ssr
+*.local
+
+# ================================
+# Python (Backend)
+# ================================
+# Environment Variables
 .env
 *.pkl
 
-# --- Virtual Environments ---
+# Virtual Environments
 venv/
 env/
 
-# --- Python Cache ---
+# Python Cache
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 
-# --- Jupyter Notebook Checkpoints ---
+# Jupyter Notebook Checkpoints
 .ipynb_checkpoints/
 
-# --- IDE/Editor Settings ---
-.vscode/
-.idea/
+# ================================
+# Editor / IDE Settings
+# ================================
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# --- Data Files ---
+# ================================
+# Data Files
+# ================================
 *.csv
 *.tsv
 *.parquet
@@ -28,15 +62,15 @@ __pycache__/
 *.json
 *.zip
 
-# --- Logs and Dumps ---
-*.log
-*.out
-*.bak
-
-# --- OS Files ---
+# ================================
+# OS Generated Files
+# ================================
 .DS_Store
 Thumbs.db
 
-# --- Database Files ---
+# ================================
+# Databases
+# ================================
 *.db
 *.sqlite3
+frontend/.gitignore
