@@ -1,0 +1,248 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modern Gaming Design System - Professional Esports Aesthetics */
+
+@layer base {
+  :root {
+    /* Enhanced Gaming Background & Surfaces */
+    --background: 220 28% 5%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 28% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 28% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Enhanced Professional Gaming Primary - Vibrant Cyan */
+    --primary: 185 90% 50%;
+    --primary-foreground: 220 30% 95%;
+    --primary-glow: 185 90% 70%;
+
+    /* Gaming Secondary - Titanium Silver */
+    --secondary: 210 12% 85%;
+    --secondary-foreground: 220 28% 8%;
+
+    /* Gaming Muted - Professional Dark */
+    --muted: 220 28% 15%;
+    --muted-foreground: 220 12% 65%;
+
+    /* Gaming Accent - Electric Purple */
+    --accent: 285 90% 65%;
+    --accent-foreground: 220 28% 8%;
+
+    /* Gaming Warning - Vibrant Orange */
+    --destructive: 15 95% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 28% 18%;
+    --input: 220 28% 18%;
+    --ring: 185 85% 45%;
+
+    --radius: 0.9rem;
+
+    /* Enhanced Professional Gaming Colors */
+    --gaming-orange: 15 98% 65%;
+    --gaming-purple: 285 95% 70%;
+    --gaming-yellow: 48 98% 70%;
+    --gaming-teal: 175 85% 60%;
+    --gaming-magenta: 320 90% 70%;
+    
+    /* Enhanced Professional Gaming Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--gaming-teal)), hsl(var(--gaming-purple) / 0.8));
+    --gradient-gaming: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)), hsl(var(--gaming-magenta)), hsl(var(--gaming-orange) / 0.8));
+    --gradient-arena: linear-gradient(180deg, hsl(var(--background)), hsl(220 30% 2%));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--gaming-purple) / 0.9), hsl(var(--primary) / 0.9), hsl(var(--gaming-teal) / 0.9), hsl(var(--gaming-orange) / 0.7));
+    
+    /* Enhanced Gaming Shadows & Effects */
+    --shadow-gaming: 0 0 40px hsl(var(--primary) / 0.4), 0 0 60px hsl(var(--gaming-teal) / 0.2);
+    --shadow-accent: 0 0 25px hsl(var(--accent) / 0.5), 0 0 40px hsl(var(--gaming-purple) / 0.3);
+    --shadow-intense: 0 15px 60px -15px hsl(var(--primary) / 0.6), 0 0 80px hsl(var(--gaming-magenta) / 0.3);
+    
+    /* Gaming Animations */
+    --transition-gaming: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s ease-out;
+    --bounce-gaming: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* Gaming Arena Theme - Bright & High Contrast */
+  .arena-theme {
+    --background: 220 26% 4%;
+    --foreground: 210 40% 98%;
+    --card: 220 26% 6%;
+    --card-foreground: 210 40% 98%;
+  }
+
+  /* Light mode for debugging (keep dark as default) */
+  .light {
+    --background: 210 40% 98%;
+    --foreground: 220 26% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 26% 6%;
+    --primary: 195 100% 45%;
+    --primary-foreground: 210 40% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans overflow-hidden;
+  }
+  
+  /* Gaming-specific utilities */
+  .glow-primary {
+    box-shadow: var(--shadow-gaming);
+  }
+  
+  .glow-accent {
+    box-shadow: var(--shadow-accent);
+  }
+  
+  .text-glow {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+  
+  .arena-bg {
+    background: var(--gradient-arena);
+  }
+  
+  .gaming-card {
+    background: var(--gradient-primary);
+    border: 1px solid hsl(var(--primary) / 0.2);
+    box-shadow: var(--shadow-gaming);
+  }
+}
+
+@layer components {
+  /* Enhanced Gaming Button Variants */
+  .btn-gaming {
+    @apply text-primary-foreground transition-all duration-300 font-semibold tracking-wide active:scale-95 border border-white/10 rounded-lg;
+    background: linear-gradient(135deg, #1b1f2a, #10141c);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
+  .btn-gaming:hover {
+    background: linear-gradient(135deg, #202633, #121823);
+    box-shadow: 0 8px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .btn-gaming-outline {
+    @apply bg-transparent text-foreground border border-white/20 hover:text-primary-foreground rounded-lg transition-all duration-300 font-semibold tracking-wide active:scale-95 backdrop-blur-sm;
+    background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  }
+
+  .btn-gaming-outline:hover {
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    box-shadow: 0 8px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .scorebar {
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  
+  .btn-accent {
+    @apply bg-accent text-accent-foreground hover:bg-accent/90
+           transition-all duration-300 font-bold uppercase tracking-wider
+           shadow-lg hover:shadow-xl active:scale-95
+           border border-accent/20 backdrop-blur-sm;
+  }
+  
+  /* Enhanced HUD Elements */
+  .hud-element {
+    @apply bg-card/85 backdrop-blur-lg border border-primary/30
+           rounded-lg shadow-lg text-foreground;
+    box-shadow: 0 8px 32px hsl(var(--primary) / 0.15),
+                0 0 20px hsl(var(--gaming-teal) / 0.1),
+                inset 0 1px 0 hsl(var(--primary) / 0.2);
+    background: linear-gradient(135deg,
+                hsl(var(--card) / 0.9),
+                hsl(var(--card)) 50%,
+                hsl(var(--primary) / 0.05));
+  }
+  
+  /* Arena Environment */
+  .arena-floor {
+    background: linear-gradient(45deg, 
+      hsl(var(--muted)) 25%, 
+      transparent 25%), 
+    linear-gradient(-45deg, 
+      hsl(var(--muted)) 25%, 
+      transparent 25%), 
+    linear-gradient(45deg, 
+      transparent 75%, 
+      hsl(var(--muted)) 75%), 
+    linear-gradient(-45deg, 
+      transparent 75%, 
+      hsl(var(--muted)) 75%);
+    background-size: 30px 30px;
+    background-position: 0 0, 0 15px, 15px -15px, -15px 0px;
+  }
+}
+
+@layer utilities {
+  /* Gaming Animations */
+  .animate-pulse-gaming {
+    animation: pulse-gaming 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-gaming {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+  
+  @keyframes glow {
+    from {
+      box-shadow: 0 0 25px hsl(var(--primary) / 0.4);
+    }
+    to {
+      box-shadow: 0 0 40px hsl(var(--primary) / 0.7),
+                  0 0 50px hsl(var(--accent) / 0.4),
+                  0 0 60px hsl(var(--gaming-teal) / 0.3);
+    }
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+}
