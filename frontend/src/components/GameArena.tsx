@@ -1521,7 +1521,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       case 'racing':
         return (
           <>
-            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused} />
+            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused} onPositionUpdate={setPlayerCarPos} />
             <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused} aiCommand={aiRaceCmd} />
             <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused} />
           </>
