@@ -1438,6 +1438,7 @@ const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | '
 const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnalytics, onToggleAnalytics }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [playerCarPos, setPlayerCarPos] = useState<[number, number, number]>([0, -1.75, 0]);
 
   // WebSocket & AI mapping
   const [wsEnabled, setWsEnabled] = useState(true);
