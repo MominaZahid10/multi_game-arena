@@ -66,8 +66,9 @@ export const flushActions = async () => {
       ...grouped,
     }
   ).catch((e) => {
-    // Swallow errors to avoid breaking UX; could log to Sentry when connected
-    console.error('analyze-universal failed', e);
+    // Backoff to avoid spamming proxy errors when backend is offline
+    nextRetryAt = Date.now() + 30000; // 30s cooldown
+    console.warn('analyze-universal failed (backing off 30s)', e?.message || e);
     return null;
   });
 };
