@@ -860,20 +860,25 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, aiComman
   // Simple AI driving
   useEffect(() => {
     if (isPlayer || paused) return;
-    if (!aiCommand) return;
+    // Keep moving forward by default
+    setIsAccelerating(true);
+    const osc = setInterval(() => {
+      setSteering(s => Math.sin(Date.now() * 0.001) * 0.2);
+    }, 200);
 
     if (aiCommand === 'overtake') {
-      setIsAccelerating(true);
       setSteering(prev => (prev < 0.2 ? prev + 0.1 : 0.2));
-      setTimeout(() => { setSteering(0); setIsAccelerating(false); }, 1000);
+      setTimeout(() => { setSteering(0); }, 1000);
     } else if (aiCommand === 'block_overtake' && typeof targetX === 'number') {
       const dir = targetX > carPosition[0] ? 1 : -1;
       setSteering(dir > 0 ? 0.2 : -0.2);
       setTimeout(() => setSteering(0), 800);
     } else if (aiCommand === 'perfect_racing_line') {
-      setIsAccelerating(true);
-      setTimeout(() => setIsAccelerating(false), 1400);
+      // Slightly reduce steering to follow straight line
+      setSteering(0);
     }
+
+    return () => clearInterval(osc);
   }, [aiCommand, isPlayer, paused, targetX, carPosition]);
 
   // Enhanced car controls
