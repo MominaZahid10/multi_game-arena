@@ -632,6 +632,9 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         if (rightArmRef.current) {
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
         }
+        // Emit player hit impulse towards AI side (+Z)
+        setPlayerShot({ dir: [0, 0.7, 1], power: Math.max(0.3, Math.min(1, power)) });
+        setTimeout(() => setPlayerShot(null), 50);
       }
     }, 100);
 
