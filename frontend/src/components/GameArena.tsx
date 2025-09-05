@@ -1549,7 +1549,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             powerPreference: "high-performance"
           }}
         >
-          <CameraController gameType={gameType} />
+          <CameraController gameType={gameType} playerCarPos={playerCarPos} />
           <OrbitControls
             enablePan={false}
             enableZoom={true}
