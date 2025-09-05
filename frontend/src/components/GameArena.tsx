@@ -1,10 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Box, Sphere, Plane } from '@react-three/drei';
 import { motion } from 'framer-motion';
 import * as THREE from 'three';
 import Shuttlecock from './Shuttlecock';
 import ScoreBar from './ScoreBar';
+import { useMultiGameWebSocket } from '@/hooks/useMultiGameWebSocket';
 
 interface GameArenaProps {
   gameType: 'fighting' | 'badminton' | 'racing';
@@ -14,7 +16,8 @@ interface GameArenaProps {
 }
 
 // Fighter Character Component - Realistic with animations
-const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1, engaged = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, initialFacing?: -1 | 1, engaged?: boolean, paused?: boolean }) => {
+type FightingAI = 'combo_attack' | 'defensive_counter' | 'rush_forward' | 'punch' | 'kick' | 'block' | null;
+const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1, engaged = false, paused = false, opponentPosition, onPositionChange, aiCommand = null }: { position: [number, number, number], color: string, isPlayer?: boolean, initialFacing?: -1 | 1, engaged?: boolean, paused?: boolean, opponentPosition?: [number, number, number], onPositionChange?: (pos: [number, number, number]) => void, aiCommand?: FightingAI }) => {
   const meshRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Mesh>(null);
   const rightArmRef = useRef<THREE.Mesh>(null);
@@ -26,6 +29,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const [isBlocking, setIsBlocking] = useState(false);
   const [position2D, setPosition2D] = useState(position);
   const [facingDirection, setFacingDirection] = useState<number>(initialFacing);
+
+  useEffect(() => { onPositionChange?.(position2D); }, [position2D, onPositionChange]);
 
   useFrame((state, delta) => {
     if (paused) return;
@@ -214,6 +219,25 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [isPlayer, isAttacking, position2D]);
+
+  // Simple AI reactions
+  useEffect(() => {
+    if (isPlayer || paused) return;
+    if (!aiCommand) return;
+    if (aiCommand === 'rush_forward' && opponentPosition) {
+      const toward = opponentPosition[0] > position2D[0] ? 1 : -1;
+      setFacingDirection(toward);
+      setIsWalking(true);
+      setPosition2D(prev => [prev[0] + toward * 0.12, prev[1], prev[2]]);
+      setTimeout(() => setIsWalking(false), 250);
+    }
+    if (aiCommand === 'punch' || aiCommand === 'combo_attack') {
+      if (opponentPosition) {
+        const toward = opponentPosition[0] > position2D[0] ? 1 : -1;
+        setPosition2D(prev => [prev[0] + toward * 0.08, prev[1], prev[2]]);
+      }
+    }
+  }, [aiCommand, isPlayer, opponentPosition, paused, position2D]);
 
   // Combat controls
   useEffect(() => {
@@ -411,7 +435,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number] }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -461,6 +485,16 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
         if (racketRef.current) {
           racketRef.current.rotation.x = Math.sin(walkCycle) * 0.1;
         }
+      }
+
+      // AI follows shuttlecock horizontally
+      if (isAI && followTarget) {
+        const [tx, , tz] = followTarget;
+        const speed = 0.08;
+        const nx = playerPos[0] + Math.sign(tx - playerPos[0]) * speed;
+        const nz = playerPos[2] + Math.sign(tz - playerPos[2]) * speed;
+        setPlayerPos([Math.max(-7, Math.min(7, nx)), playerPos[1], Math.max(-5, Math.min(5, nz))]);
+        setFacingDirection(tx > playerPos[0] ? 1 : -1);
       }
 
       // Face the net properly
@@ -761,7 +795,8 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
 };
 
 // Enhanced Racing Car Component
-const RacingCar = ({ position, color, isPlayer = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean }) => {
+type RacingAI = 'overtake' | 'block_overtake' | 'perfect_racing_line' | null;
+const RacingCar = ({ position, color, isPlayer = false, paused = false, aiCommand = null, targetX }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, aiCommand?: RacingAI, targetX?: number }) => {
   const carRef = useRef<THREE.Group>(null);
   const wheelRefs = useRef<THREE.Mesh[]>([]);
   const [carPosition, setCarPosition] = useState(position);
@@ -1378,13 +1413,41 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [gameStarted, setGameStarted] = useState(false);
   const [paused, setPaused] = useState(false);
 
+  // WebSocket & AI mapping
+  const [wsEnabled, setWsEnabled] = useState(true);
+  const { connected, lastMessage } = useMultiGameWebSocket('arena-session', wsEnabled);
+  const [aiFightCmd, setAiFightCmd] = useState<FightingAI>(null);
+  const [aiBadmintonShot, setAiBadmintonShot] = useState<'drop_shot' | 'smash' | 'clear' | 'net_shot' | null>(null);
+  const [aiRaceCmd, setAiRaceCmd] = useState<RacingAI>(null);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    const msg: any = lastMessage;
+    const game = msg.game || msg.new_game;
+    const action = msg.ai_action || msg.action;
+    if (game === 'fighting' && action) setAiFightCmd(action);
+    if (game === 'badminton' && action) setAiBadmintonShot(action);
+    if (game === 'racing' && action) setAiRaceCmd(action);
+    const t = setTimeout(() => { setAiFightCmd(null); setAiBadmintonShot(null); setAiRaceCmd(null); }, 900);
+    return () => clearTimeout(t);
+  }, [lastMessage]);
+
+  // Fighting state
+  const [playerHealth, setPlayerHealth] = useState(100);
+  const [aiHealth, setAiHealth] = useState(100);
+  const [playerPosF, setPlayerPosF] = useState<[number, number, number]>([-4.5, 0, 0]);
+  const [aiPosF, setAiPosF] = useState<[number, number, number]>([4.5, 0, 0]);
+
+  // Badminton state
+  const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
+
   const renderGameContent = () => {
     switch (gameType) {
       case 'fighting':
         return (
           <>
-            <FighterCharacter position={[-4.5, 0, 0]} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} />
-            <FighterCharacter position={[4.5, 0, 0]} color="#FF4455" initialFacing={1} engaged={gameStarted} paused={paused} />
+            <FighterCharacter position={playerPosF} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} opponentPosition={aiPosF} onPositionChange={setPlayerPosF} />
+            <FighterCharacter position={aiPosF} color="#FF4455" initialFacing={-1} engaged={gameStarted} paused={paused} opponentPosition={playerPosF} onPositionChange={setAiPosF} aiCommand={aiFightCmd} />
           </>
         );
       case 'badminton':
@@ -1392,16 +1455,16 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} />
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} isAI followTarget={shuttlePos} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused} />
+            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} />
           </>
         );
       case 'racing':
         return (
           <>
             <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused} />
-            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused} />
+            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused} aiCommand={aiRaceCmd} />
             <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused} />
           </>
         );
@@ -1456,7 +1519,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         {/* Top Score Bar */}
         <div className="absolute top-4 left-0 right-0 flex justify-center">
           {gameType === 'fighting' && (
-            <ScoreBar game="fighting" playerHealth={100} aiHealth={100} rounds={[0, 0]} />
+            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={[0, 0]} />
           )}
           {gameType === 'badminton' && (
             <ScoreBar game="badminton" score={[0, 0]} />
@@ -1511,6 +1574,14 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             >
               Analytics
             </motion.button>
+
+            {/* WebSocket status toggle */}
+            <button
+              onClick={() => setWsEnabled((e) => !e)}
+              className="px-3 py-2 rounded-lg text-xs font-medium border border-white/10 bg-black/40 text-white"
+            >
+              {connected ? '🟢 AI Connected' : '🔴 AI Disconnected'}
+            </button>
           </div>
         </div>
 
