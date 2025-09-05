@@ -18,7 +18,7 @@ export default defineConfig(async ({ mode }) => {
 
   return {
     server: {
-      host: "::",
+      host: true,
       port: 8080,
     },
     plugins: [react(), taggerPlugin].filter(Boolean) as any,
