@@ -55,6 +55,7 @@ const postJSON = async <T>(url: string, body: unknown): Promise<T> => {
 
 export const flushActions = async () => {
   if (actionBuffer.length === 0) return null;
+  if (Date.now() < nextRetryAt) return null;
   const toSend = [...actionBuffer];
   actionBuffer = [];
   const grouped = groupActionsForUniversal(toSend);
