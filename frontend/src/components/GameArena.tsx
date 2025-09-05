@@ -72,9 +72,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
         meshRef.current.position.y = position2D[1] + Math.abs(Math.sin(walkCycle * 2)) * 0.05;
       }
 
-      // Always face opponent properly
+      // Always face opponent using lookAt to keep orientation toward the other fighter
       if (meshRef.current) {
-        meshRef.current.rotation.set(0, facingDirection < 0 ? Math.PI : 0, 0);
+        if (opponentPosition) {
+          const target = new THREE.Vector3(opponentPosition[0], position2D[1], opponentPosition[2]);
+          meshRef.current.lookAt(target);
+        } else {
+          meshRef.current.rotation.set(0, facingDirection < 0 ? Math.PI : 0, 0);
+        }
       }
     }
   });
@@ -823,7 +828,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, aiComman
 
       // Update position based on velocity and steering
       const newX = carPosition[0] + Math.sin(steering) * newVelocity * delta;
-      const newZ = carPosition[2] + Math.cos(steering) * newVelocity * delta;
+      const newZ = carPosition[2] - Math.cos(steering) * newVelocity * delta;
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
