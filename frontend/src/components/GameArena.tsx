@@ -1443,6 +1443,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [gameStarted, setGameStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [playerCarPos, setPlayerCarPos] = useState<[number, number, number]>([0, -1.75, 0]);
+  const [raceRunning, setRaceRunning] = useState(false);
+  const [raceCountdown, setRaceCountdown] = useState<number | null>(null);
+  const [raceOver, setRaceOver] = useState<string | null>(null);
+  const [aiCar1Pos, setAiCar1Pos] = useState<[number, number, number]>([2, -1.75, -3]);
+  const [aiCar2Pos, setAiCar2Pos] = useState<[number, number, number]>([0, -1.75, -6]);
+  const [aiRaceCmd1, setAiRaceCmd1] = useState<RacingAI>(null);
+  const [aiRaceCmd2, setAiRaceCmd2] = useState<RacingAI>(null);
 
   // WebSocket & AI mapping
   const [wsEnabled, setWsEnabled] = useState(true);
@@ -1462,6 +1469,44 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     const t = setTimeout(() => { setAiFightCmd(null); setAiBadmintonShot(null); setAiRaceCmd(null); }, 900);
     return () => clearTimeout(t);
   }, [lastMessage]);
+
+  // Racing countdown timer
+  useEffect(() => {
+    if (raceCountdown === null) return;
+    if (raceCountdown > 0) {
+      const t = setTimeout(() => setRaceCountdown((c) => (c === null ? null : c - 1)), 1000);
+      return () => clearTimeout(t);
+    } else {
+      setRaceCountdown(null);
+      setRaceRunning(true);
+    }
+  }, [raceCountdown]);
+
+  // Racing proximity AI reactions
+  useEffect(() => {
+    if (!raceRunning) { setAiRaceCmd1(null); setAiRaceCmd2(null); return; }
+    const dx1 = Math.abs(playerCarPos[0] - aiCar1Pos[0]);
+    const dz1 = playerCarPos[2] - aiCar1Pos[2];
+    setAiRaceCmd1(dx1 < 1.2 && dz1 > -0.5 && dz1 < 4 ? 'block_overtake' : null);
+    const dx2 = Math.abs(playerCarPos[0] - aiCar2Pos[0]);
+    const dz2 = playerCarPos[2] - aiCar2Pos[2];
+    setAiRaceCmd2(dx2 < 1.2 && dz2 > -0.5 && dz2 < 4 ? 'block_overtake' : null);
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos, raceRunning]);
+
+  // Racing collisions
+  useEffect(() => {
+    if (!raceRunning || raceOver) return;
+    const collides = (a:[number,number,number], b:[number,number,number]) => {
+      const dx = a[0]-b[0];
+      const dz = a[2]-b[2];
+      return Math.hypot(dx, dz) < 1.2;
+    };
+    if (collides(playerCarPos, aiCar1Pos) || collides(playerCarPos, aiCar2Pos)) {
+      setRaceOver('ACCIDENT');
+      setPaused(true);
+      setRaceRunning(false);
+    }
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos, raceRunning, raceOver]);
 
   // Fighting state
   const [playerHealth, setPlayerHealth] = useState(100);
@@ -1527,9 +1572,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       case 'racing':
         return (
           <>
-            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused} onPositionUpdate={setPlayerCarPos} />
-            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused} aiCommand={aiRaceCmd} />
-            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused} />
+            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused || !raceRunning || !!raceOver} onPositionUpdate={setPlayerCarPos} />
+            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused || !raceRunning || !!raceOver} aiCommand={aiRaceCmd || aiRaceCmd1} targetX={playerCarPos[0]} onPositionUpdate={setAiCar1Pos} />
+            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused || !raceRunning || !!raceOver} aiCommand={aiRaceCmd2} targetX={playerCarPos[0]} onPositionUpdate={setAiCar2Pos} />
           </>
         );
       default:
@@ -1619,8 +1664,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             {/* Start/Pause Button (compact) */}
             <motion.button
               onClick={() => {
-                if (!gameStarted) { setGameStarted(true); setPaused(false); }
-                else { setPaused(p => !p); }
+                if (!gameStarted) {
+                  setGameStarted(true);
+                  setPaused(false);
+                  if (gameType === 'racing') { setRaceOver(null); setRaceRunning(false); setRaceCountdown(3); }
+                } else {
+                  setPaused(p => !p);
+                }
               }}
               className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
               whileHover={{ scale: 1.05 }}
@@ -1648,6 +1698,20 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             </button>
           </div>
         </div>
+
+        {/* Center overlays */}
+        {gameType === 'racing' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {raceCountdown !== null && (
+              <div className="text-7xl font-extrabold text-white drop-shadow-lg">{raceCountdown}</div>
+            )}
+            {raceOver && (
+              <div className="px-6 py-3 rounded-xl bg-black/70 border border-white/10 text-2xl font-bold text-red-400">
+                {raceOver}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Game Controls Info */}
         <div className="absolute bottom-4 left-4 hud-element p-4 rounded-lg">
