@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime, JSON
 from sqlalchemy.sql import func
-from databaseconn import Base
+from backend.databaseconn import Base
 import uuid
 from datetime import datetime
 
