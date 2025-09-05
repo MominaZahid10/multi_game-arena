@@ -834,7 +834,9 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, aiComman
       const clampedX = Math.max(-6, Math.min(6, newX));
       const clampedZ = Math.max(-15, Math.min(15, newZ));
 
-      setCarPosition([clampedX, -1.75, clampedZ]); // Car properly on ground
+      const nextPos: [number, number, number] = [clampedX, -1.75, clampedZ];
+      setCarPosition(nextPos); // Car properly on ground
+      onPositionUpdate?.(nextPos);
 
       // Car rotation based on steering
       carRef.current.rotation.y = steering;
