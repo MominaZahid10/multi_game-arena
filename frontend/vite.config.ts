@@ -20,6 +20,13 @@ export default defineConfig(async ({ mode }) => {
     server: {
       host: true,
       port: 8080,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+          ws: true,
+        },
+      },
     },
     plugins: [react(), taggerPlugin].filter(Boolean) as any,
     resolve: {
