@@ -1387,7 +1387,7 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
 };
 
 // Enhanced Professional Gaming Camera Controller
-const CameraController = ({ gameType }: { gameType: 'fighting' | 'badminton' | 'racing' }) => {
+const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | 'badminton' | 'racing'; playerCarPos?: [number, number, number] }) => {
   const { camera, gl } = useThree();
   const controlsRef = useRef<any>(null);
 
