@@ -114,30 +114,28 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     });
 
     if (attackType === 'punch') {
-      // Realistic punch animation with full body movement
       if (rightArmRef.current && bodyRef.current) {
-        rightArmRef.current.rotation.x = -Math.PI / 2;
-        rightArmRef.current.rotation.z = facingDirection * -0.3;
-        bodyRef.current.rotation.y = facingDirection * -0.1;
+        rightArmRef.current.position.z = 0.3;
+        rightArmRef.current.rotation.x = -Math.PI / 4;
+        bodyRef.current.rotation.y = 0;
       }
 
-      // Forward lunge with proper spacing
       setPosition2D([originalX + (facingDirection * 0.3), position2D[1], position2D[2]]);
 
       setTimeout(() => {
         if (rightArmRef.current && bodyRef.current) {
           rightArmRef.current.rotation.x = 0;
-          rightArmRef.current.rotation.z = 0;
+          rightArmRef.current.position.z = 0;
           bodyRef.current.rotation.y = 0;
         }
         setPosition2D([originalX, position2D[1], position2D[2]]);
         setIsAttacking(false);
-      }, 400);
+      }, 300);
     } else if (attackType === 'kick') {
-      // Kick animation
       if (rightLegRef.current && bodyRef.current) {
-        rightLegRef.current.rotation.x = Math.PI / 3;
-        bodyRef.current.rotation.y = facingDirection * -0.15;
+        rightLegRef.current.position.z = 0.35;
+        rightLegRef.current.rotation.x = -Math.PI / 8;
+        bodyRef.current.rotation.y = 0;
       }
 
       setPosition2D([originalX + (facingDirection * 0.4), position2D[1], position2D[2]]);
@@ -145,11 +143,12 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       setTimeout(() => {
         if (rightLegRef.current && bodyRef.current) {
           rightLegRef.current.rotation.x = 0;
+          rightLegRef.current.position.z = 0;
           bodyRef.current.rotation.y = 0;
         }
         setPosition2D([originalX, position2D[1], position2D[2]]);
         setIsAttacking(false);
-      }, 500);
+      }, 380);
     }
   };
 
@@ -439,7 +438,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, onPlayerHit }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number)=>void }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number)=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -507,6 +506,9 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
       }
     }
   });
+
+  // Report position changes upward
+  useEffect(() => { onPositionChange?.(playerPos); }, [playerPos, onPositionChange]);
 
   // Enhanced player movement for badminton
   useEffect(() => {
@@ -1202,44 +1204,44 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {gameType === 'racing' && (
         <>
           {/* Main track surface - darker for night */}
-          <Plane args={[15, 40]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
+          <Plane args={[15, 200]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
             <meshPhongMaterial color="#1A1A1A" roughness={0.8} />
           </Plane>
 
           {/* Illuminated track borders */}
-          <Box args={[0.3, 0.2, 40]} position={[-7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 200]} position={[-7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
-          <Box args={[0.3, 0.2, 40]} position={[7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 200]} position={[7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
 
           {/* Reflective center line */}
-          {Array.from({ length: 20 }, (_, i) => (
-            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+          {Array.from({ length: 100 }, (_, i) => (
+            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
               <meshBasicMaterial color="#FFD700" />
             </Box>
           ))}
 
           {/* Reflective lane dividers */}
-          {Array.from({ length: 20 }, (_, i) => (
+          {Array.from({ length: 100 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
-              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
             </React.Fragment>
           ))}
 
           {/* Illuminated track barriers */}
-          {Array.from({ length: 10 }, (_, i) => (
+          {Array.from({ length: 50 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.5, 1, 3]} position={[-9, -1, -15 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[-9, -1, -147 + i * 6]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
-              <Box args={[0.5, 1, 3]} position={[9, -1, -15 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[9, -1, -147 + i * 6]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
             </React.Fragment>
@@ -1272,7 +1274,7 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           ))}
 
           {/* Start/finish line with night lighting */}
-          <Plane args={[15, 0.5]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.82, 15]}>
+          <Plane args={[15, 0.5]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.82, 98]}>
             <meshBasicMaterial color="#FFFFFF" />
           </Plane>
 
@@ -1501,6 +1503,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   // Badminton state
   const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
   const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number } | null>(null);
+  const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
   const renderGameContent = () => {
     switch (gameType) {
@@ -1515,10 +1518,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         return (
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
-            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} />
+            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} onPositionChange={setPlayerBadPos} />
             <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} isAI followTarget={shuttlePos} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} />
+            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} idleAnchor={playerBadPos} />
           </>
         );
       case 'racing':
@@ -1560,8 +1563,8 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             maxDistance={gameType === 'racing' ? 15 : 12}
             minPolarAngle={Math.PI / 12}
             maxPolarAngle={Math.PI / 2.5}
-            minAzimuthAngle={gameType === 'fighting' ? -Math.PI / 3 : -Math.PI / 2}
-            maxAzimuthAngle={gameType === 'fighting' ? Math.PI / 3 : Math.PI / 2}
+            minAzimuthAngle={gameType === 'fighting' ? -Math.PI / 3 : gameType === 'racing' ? -Infinity : -Math.PI / 2}
+            maxAzimuthAngle={gameType === 'fighting' ? Math.PI / 3 : gameType === 'racing' ? Infinity : Math.PI / 2}
             autoRotate={false}
             enableDamping={true}
             dampingFactor={0.08}
