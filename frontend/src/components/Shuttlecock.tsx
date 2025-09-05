@@ -4,7 +4,7 @@ import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
-const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void }) => {
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number } | null }) => {
   const shuttleRef = useRef<THREE.Group>(null);
   const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
   const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
