@@ -800,7 +800,7 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
 
 // Enhanced Racing Car Component
 type RacingAI = 'overtake' | 'block_overtake' | 'perfect_racing_line' | null;
-const RacingCar = ({ position, color, isPlayer = false, paused = false, aiCommand = null, targetX }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, aiCommand?: RacingAI, targetX?: number }) => {
+const RacingCar = ({ position, color, isPlayer = false, paused = false, aiCommand = null, targetX, onPositionUpdate }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, aiCommand?: RacingAI, targetX?: number, onPositionUpdate?: (pos:[number,number,number])=>void }) => {
   const carRef = useRef<THREE.Group>(null);
   const wheelRefs = useRef<THREE.Mesh[]>([]);
   const [carPosition, setCarPosition] = useState(position);
