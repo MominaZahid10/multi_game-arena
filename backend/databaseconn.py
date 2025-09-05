@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 import os
-from config import settings
+from backend.config import settings
 
 if settings.ENVIRONMENT == "production" and settings.DATABASE_URL_PROD:
     DATABASE_URL = settings.DATABASE_URL_PROD

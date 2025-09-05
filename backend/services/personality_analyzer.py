@@ -2,7 +2,7 @@ import asyncio
 import numpy as np
 from typing import List, Dict, Any
 from dataclasses import dataclass
-from dbmodels.personality import BehavioralFeature, UnifiedPersonality
+from backend.dbmodels.personality import BehavioralFeature, UnifiedPersonality
 from datetime import datetime
 import os
 import pickle
@@ -13,7 +13,7 @@ try:
     # You'll need to convert your notebook to a .py file or import it differently
     import sys
     sys.path.append('.')  # Add current directory to path
-    from model1 import CrossGamePersonalityClassifier
+    from backend.services.model1 import CrossGamePersonalityClassifier
     HybridPersonalitySystem = CrossGamePersonalityClassifier  # Use your actual class
 except ImportError:
     print("❌ CrossGamePersonalityClassifier not found, using fallback")
@@ -38,7 +38,7 @@ class MultiGameAnalyzer:
     
     def _load_trained_models(self):
         """Load pre-trained hybrid ML models"""
-        model_path = "hybrid_personality_system.pkl"
+        model_path = "improved_hybrid_personality_system.pkl"
         
         if os.path.exists(model_path):
             try:
