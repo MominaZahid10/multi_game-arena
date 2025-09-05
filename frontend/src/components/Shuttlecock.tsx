@@ -115,6 +115,16 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     }
   }, [aiShot, isInPlay]);
 
+  // Apply player hit impulses
+  useEffect(() => {
+    if (!playerHit) return;
+    setIsInPlay(true);
+    const [dx, dy, dz] = playerHit.dir;
+    const power = Math.max(0.2, Math.min(1.5, playerHit.power));
+    setVelocity([dx * power * 6, Math.max(2, dy * power * 4), dz * power * 6]);
+    setLastHitTime(Date.now());
+  }, [playerHit]);
+
   // Enhanced launch mechanics with power system
   useEffect(() => {
     let powerCharging = false;
