@@ -439,7 +439,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number] }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, onPlayerHit }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number)=>void }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -633,8 +633,7 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
         }
         // Emit player hit impulse towards AI side (+Z)
-        setPlayerShot({ dir: [0, 0.7, 1], power: Math.max(0.3, Math.min(1, power)) });
-        setTimeout(() => setPlayerShot(null), 50);
+        onPlayerHit?.([0, 0.7, 1], Math.max(0.3, Math.min(1, power)));
       }
     }, 100);
 
@@ -1516,7 +1515,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         return (
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
-            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} />
+            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} />
             <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} isAI followTarget={shuttlePos} />
             {/* Realistic Shuttlecock with physics */}
             <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} />
