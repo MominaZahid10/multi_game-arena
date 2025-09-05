@@ -1392,42 +1392,38 @@ const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | '
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
-    // Smooth camera transitions for professional gaming perspective
-    const targetPositions = {
-      fighting: { position: [4, 2, 4], target: [0, 0.5, 0] },
-      badminton: { position: [0, 4, 5], target: [0, 1, 0] },
-      racing: { position: [0, 2, 8], target: [0, -1, 0] }
-    };
-
-    const target = targetPositions[gameType];
-
-    // Smooth camera animation
-    const animateCamera = () => {
+    if (gameType !== 'racing') {
+      const targetPositions = {
+        fighting: { position: [4, 2, 4], target: [0, 0.5, 0] },
+        badminton: { position: [0, 4, 5], target: [0, 1, 0] },
+      } as const;
+      const target = targetPositions[gameType as 'fighting' | 'badminton'];
+      if (!target) return;
       const startPos = camera.position.clone();
       const endPos = new THREE.Vector3(...target.position);
       const startTime = Date.now();
-      const duration = 1000; // 1 second transition
-
+      const duration = 800;
       const animate = () => {
         const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Smooth easing function
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-        camera.position.lerpVectors(startPos, endPos, easeProgress);
+        const t = Math.min(elapsed / duration, 1);
+        const e = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(startPos, endPos, e);
         camera.lookAt(...target.target);
-
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        }
+        if (t < 1) requestAnimationFrame(animate);
       };
-
       animate();
-    };
-
-    animateCamera();
+      return;
+    }
   }, [camera, gameType]);
+
+  // Follow player car smoothly in racing
+  useFrame(() => {
+    if (gameType !== 'racing' || !playerCarPos) return;
+    const car = new THREE.Vector3(...playerCarPos);
+    const desired = car.clone().add(new THREE.Vector3(0, 2.5, 6)); // behind and above
+    camera.position.lerp(desired, 0.08);
+    camera.lookAt(car.x, car.y, car.z);
+  });
 
   return null;
 };
