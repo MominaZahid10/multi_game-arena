@@ -1501,6 +1501,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
 
   // Badminton state
   const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
+  const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number } | null>(null);
 
   const renderGameContent = () => {
     switch (gameType) {
@@ -1518,7 +1519,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} />
             <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} isAI followTarget={shuttlePos} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} />
+            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} />
           </>
         );
       case 'racing':
