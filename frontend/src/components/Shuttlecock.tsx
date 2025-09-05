@@ -3,7 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
-const Shuttlecock = ({ paused = false }: { paused?: boolean }) => {
+type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void }) => {
   const shuttleRef = useRef<THREE.Group>(null);
   const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
   const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
@@ -38,8 +39,10 @@ const Shuttlecock = ({ paused = false }: { paused?: boolean }) => {
       const newY = Math.max(0.12, y + newVy * delta);
       const newZ = z + newVz * delta;
       
-      setPosition([newX, newY, newZ]);
+      const nextPos: [number, number, number] = [newX, newY, newZ];
+      setPosition(nextPos);
       setVelocity([newVx, newVy, newVz]);
+      onPositionChange?.(nextPos);
       
       // Realistic rotation based on velocity
       const rotSpeed = speed * 3;
@@ -78,6 +81,39 @@ const Shuttlecock = ({ paused = false }: { paused?: boolean }) => {
       shuttleRef.current.rotation.y = state.clock.elapsedTime * 0.5;
     }
   });
+
+  // Apply AI shot commands
+  useEffect(() => {
+    if (!aiShot) return;
+    if (!isInPlay) {
+      setIsInPlay(true);
+      let vx = 0, vy = 0, vz = 0;
+      switch (aiShot) {
+        case 'smash':
+          vx = (Math.random() - 0.5) * 2;
+          vy = 5;
+          vz = -6;
+          break;
+        case 'drop_shot':
+          vx = (Math.random() - 0.5) * 1.2;
+          vy = 3;
+          vz = -2.5;
+          break;
+        case 'clear':
+          vx = (Math.random() - 0.5) * 1.5;
+          vy = 6;
+          vz = -4;
+          break;
+        case 'net_shot':
+          vx = (Math.random() - 0.5) * 0.8;
+          vy = 2.5;
+          vz = -1.6;
+          break;
+      }
+      setVelocity([vx, vy, vz]);
+      setLastHitTime(Date.now());
+    }
+  }, [aiShot, isInPlay]);
 
   // Enhanced launch mechanics with power system
   useEffect(() => {
