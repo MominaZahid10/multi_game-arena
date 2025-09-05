@@ -1457,6 +1457,37 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [playerPosF, setPlayerPosF] = useState<[number, number, number]>([-4.5, 0, 0]);
   const [aiPosF, setAiPosF] = useState<[number, number, number]>([4.5, 0, 0]);
 
+  // Simple hit detection based on proximity
+  useEffect(() => {
+    if (!aiFightCmd) return;
+    if (aiFightCmd === 'punch' || aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' || aiFightCmd === 'rush_forward') {
+      const dx = aiPosF[0] - playerPosF[0];
+      const dz = aiPosF[2] - playerPosF[2];
+      const dist = Math.hypot(dx, dz);
+      if (dist < 1.0) {
+        const dmg = aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' ? 12 : 8;
+        setPlayerHealth(h => Math.max(0, h - dmg));
+      }
+    }
+  }, [aiFightCmd, aiPosF, playerPosF]);
+
+  // Player attack keys reduce AI health if close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') {
+        const dx = aiPosF[0] - playerPosF[0];
+        const dz = aiPosF[2] - playerPosF[2];
+        const dist = Math.hypot(dx, dz);
+        if (dist < 1.0) {
+          const dmg = e.key.toLowerCase() === 'k' ? 12 : 8;
+          setAiHealth(h => Math.max(0, h - dmg));
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [aiPosF, playerPosF]);
+
   // Badminton state
   const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
 
