@@ -1646,9 +1646,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         <Canvas
           camera={{
             position: [6, 2, 6],
-            fov: gameType === 'racing' ? 70 : 75,
+            fov: gameType === 'racing' ? 60 : 75,
             near: 0.1,
-            far: 100
+            far: 200
           }}
           shadows
           gl={{
