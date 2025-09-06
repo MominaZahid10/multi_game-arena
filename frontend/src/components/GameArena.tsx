@@ -1630,7 +1630,19 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
 
   // Badminton state
   const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
-  const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number } | null>(null);
+  const [shuttleVel, setShuttleVel] = useState<[number, number, number]>([0,0,0]);
+  const shuttlePrevRef = useRef<{pos:[number,number,number], t:number}|null>(null);
+  const updateShuttleState = (p:[number,number,number]) => {
+    const now = performance.now();
+    const prev = shuttlePrevRef.current;
+    if (prev) {
+      const dt = Math.max(0.001, (now - prev.t)/1000);
+      setShuttleVel([(p[0]-prev.pos[0])/dt, (p[1]-prev.pos[1])/dt, (p[2]-prev.pos[2])/dt]);
+    }
+    shuttlePrevRef.current = {pos: p, t: now};
+    setShuttlePos(p);
+  };
+  const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
   const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
   const renderGameContent = () => {
@@ -1646,10 +1658,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         return (
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
-            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} onPositionChange={setPlayerBadPos} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} />
+            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} followVel={shuttleVel} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} idleAnchor={playerBadPos} />
+            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} />
           </>
         );
       case 'racing':
