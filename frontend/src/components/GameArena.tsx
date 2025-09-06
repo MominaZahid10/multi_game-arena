@@ -113,43 +113,75 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       });
     });
 
-    if (attackType === 'punch') {
-      if (rightArmRef.current && bodyRef.current) {
-        rightArmRef.current.position.z = 0.3;
-        rightArmRef.current.rotation.x = -Math.PI / 4;
-        bodyRef.current.rotation.y = 0;
-      }
+    // Three-phase animation: wind-up -> strike (forward) -> recover
+    const now = Date.now();
+    const windup = 120;
+    const strike = attackType === 'kick' ? 160 : 120;
+    const recover = 180;
 
-      setPosition2D([originalX + (facingDirection * 0.3), position2D[1], position2D[2]]);
+    const start = now;
+    const end1 = start + windup;
+    const end2 = end1 + strike;
+    const end3 = end2 + recover;
 
-      setTimeout(() => {
-        if (rightArmRef.current && bodyRef.current) {
-          rightArmRef.current.rotation.x = 0;
-          rightArmRef.current.position.z = 0;
-          bodyRef.current.rotation.y = 0;
+    const startZ = position2D[2];
+    const startX = position2D[0];
+
+    const animate = () => {
+      const t = Date.now();
+      if (t <= end1) {
+        // Wind-up
+        const p = (t - start) / windup;
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -p * (Math.PI / 6);
+          rightArmRef.current.position.z = p * 0.15;
         }
-        setPosition2D([originalX, position2D[1], position2D[2]]);
-        setIsAttacking(false);
-      }, 300);
-    } else if (attackType === 'kick') {
-      if (rightLegRef.current && bodyRef.current) {
-        rightLegRef.current.position.z = 0.35;
-        rightLegRef.current.rotation.x = -Math.PI / 8;
-        bodyRef.current.rotation.y = 0;
-      }
-
-      setPosition2D([originalX + (facingDirection * 0.4), position2D[1], position2D[2]]);
-
-      setTimeout(() => {
-        if (rightLegRef.current && bodyRef.current) {
-          rightLegRef.current.rotation.x = 0;
-          rightLegRef.current.position.z = 0;
-          bodyRef.current.rotation.y = 0;
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -p * (Math.PI / 10);
+          rightLegRef.current.position.z = p * 0.18;
         }
-        setPosition2D([originalX, position2D[1], position2D[2]]);
-        setIsAttacking(false);
-      }, 380);
-    }
+        requestAnimationFrame(animate);
+        return;
+      }
+      if (t <= end2) {
+        // Strike forward with body lunge
+        const p = (t - end1) / strike;
+        const lunge = (attackType === 'kick' ? 0.45 : 0.3) * p;
+        setPosition2D([startX + facingDirection * lunge, position2D[1], startZ]);
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -Math.PI / 4;
+          rightArmRef.current.position.z = 0.3 * p + 0.15;
+        }
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -Math.PI / 6;
+          rightLegRef.current.position.z = 0.35 * p + 0.18;
+        }
+        requestAnimationFrame(animate);
+        return;
+      }
+      if (t <= end3) {
+        // Recovery back to stance
+        const p = (t - end2) / recover;
+        setPosition2D([startX + facingDirection * (1 - p) * (attackType === 'kick' ? 0.45 : 0.3), position2D[1], startZ]);
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -(1 - p) * (Math.PI / 4);
+          rightArmRef.current.position.z = (1 - p) * 0.3;
+        }
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -(1 - p) * (Math.PI / 6);
+          rightLegRef.current.position.z = (1 - p) * 0.35;
+        }
+        requestAnimationFrame(animate);
+        return;
+      }
+      // End
+      if (rightArmRef.current) { rightArmRef.current.rotation.x = 0; rightArmRef.current.position.z = 0; }
+      if (rightLegRef.current) { rightLegRef.current.rotation.x = 0; rightLegRef.current.position.z = 0; }
+      setPosition2D([startX, position2D[1], startZ]);
+      setIsAttacking(false);
+    };
+
+    animate();
   };
 
   // Enhanced movement with WASD
