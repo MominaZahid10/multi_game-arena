@@ -823,20 +823,24 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
       // Realistic car physics
       let newVelocity = velocity;
 
-      if (isAccelerating) {
+      const accel = isAccelerating && raceRunning;
+      const brake = isBraking && raceRunning;
+
+      if (accel) {
         newVelocity = Math.min(velocity + delta * 3, 8);
-      } else if (isBraking) {
+      } else if (brake) {
         newVelocity = Math.max(velocity - delta * 5, -2);
       } else {
         // Natural deceleration
-        newVelocity = velocity * 0.98;
+        newVelocity = raceRunning ? velocity * 0.98 : 0;
       }
 
       setVelocity(newVelocity);
 
-      // Update position based on velocity and steering
-      const newX = carPosition[0] + Math.sin(steering) * newVelocity * delta;
-      const newZ = carPosition[2] - Math.cos(steering) * newVelocity * delta;
+      // Update position based on velocity and steering (freeze movement until raceRunning)
+      const moveVel = raceRunning ? newVelocity : 0;
+      const newX = carPosition[0] + Math.sin(steering) * moveVel * delta;
+      const newZ = carPosition[2] - Math.cos(steering) * moveVel * delta;
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
@@ -852,12 +856,12 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
       // Wheel rotation based on speed
       wheelRefs.current.forEach((wheel) => {
         if (wheel) {
-          wheel.rotation.x += newVelocity * delta * 2;
+          wheel.rotation.x += moveVel * delta * 2;
         }
       });
 
       // Engine vibration when accelerating
-      if (isAccelerating && Math.abs(newVelocity) > 0.1) {
+      if (accel && Math.abs(moveVel) > 0.1) {
         carRef.current.position.y = carPosition[1] + Math.sin(state.clock.elapsedTime * 30) * 0.005;
       } else {
         carRef.current.position.y = carPosition[1];
