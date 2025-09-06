@@ -839,7 +839,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, aiComman
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
-      const clampedZ = Math.max(-15, Math.min(15, newZ));
+      const clampedZ = Math.max(-98, Math.min(98, newZ));
 
       const nextPos: [number, number, number] = [clampedX, -1.75, clampedZ];
       setCarPosition(nextPos); // Car properly on ground
