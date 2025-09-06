@@ -4,12 +4,13 @@ import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
-const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number } | null; idleAnchor?: [number, number, number] }) => {
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number; spin?: [number, number, number] } | null; idleAnchor?: [number, number, number] }) => {
   const shuttleRef = useRef<THREE.Group>(null);
   const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
   const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
   const [isInPlay, setIsInPlay] = useState(false);
   const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
+  const [spin, setSpin] = useState<[number, number, number]>([0, 0, 0]);
   const [lastHitTime, setLastHitTime] = useState(0);
   const [lastLanding, setLastLanding] = useState<{pos:[number,number,number]}|null>(null);
 
@@ -20,44 +21,61 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       const [x, y, z] = position;
       const [vx, vy, vz] = velocity;
       const [rx, ry, rz] = rotation;
-      
-      // Realistic badminton physics
-      const gravity = -12 * delta; // Stronger gravity for shuttlecock
-      const airResistanceXZ = 0.96; // Higher air resistance for shuttlecock
-      const airResistanceY = 0.98;
-      
-      // Shuttlecock-specific aerodynamics
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      const dragFactor = 1 - (speed * 0.02 * delta);
-      
-      // Update velocity with enhanced physics
-      const newVy = (vy + gravity) * airResistanceY;
-      const newVx = vx * airResistanceXZ * dragFactor;
-      const newVz = vz * airResistanceXZ * dragFactor;
-      
-      // Update position
-      const newX = x + newVx * delta;
-      const newY = Math.max(0.12, y + newVy * delta);
-      const newZ = z + newVz * delta;
+      const [ox, oy, oz] = spin;
+
+      // Physical constants
+      const g = -12; // m/s^2
+      const mass = 0.005; // kg (approx)
+      const kDrag = 0.25; // drag coefficient
+      const kMagnus = 0.02; // Magnus effect strength
+
+      // Quadratic drag: Fd = -k * v * |v|
+      const v = new THREE.Vector3(vx, vy, vz);
+      const speed = v.length();
+      const drag = v.clone().multiplyScalar(-kDrag * speed);
+
+      // Magnus force: Fm = k * (omega x v)
+      const omega = new THREE.Vector3(ox, oy, oz);
+      const magnus = omega.clone().cross(v).multiplyScalar(kMagnus);
+
+      // Sum forces
+      const force = new THREE.Vector3(drag.x, drag.y + mass * g, drag.z).add(magnus);
+      const accel = force.multiplyScalar(1 / mass);
+
+      // Integrate velocity and position (semi-implicit Euler)
+      const newV = v.add(accel.multiplyScalar(delta));
+      let newX = x + newV.x * delta;
+      let newY = y + newV.y * delta;
+      let newZ = z + newV.z * delta;
+
+      // Ground bounce
+      if (newY <= 0.12) {
+        newY = 0.12;
+        newV.y = -newV.y * 0.35; // restitution
+        newV.x *= 0.6; newV.z *= 0.6; // friction
+        // Spin decay on bounce
+        setSpin([ox * 0.7, oy * 0.7, oz * 0.7]);
+      }
       
       const nextPos: [number, number, number] = [newX, newY, newZ];
       setPosition(nextPos);
-      setVelocity([newVx, newVy, newVz]);
+      setVelocity([newV.x, newV.y, newV.z]);
       onPositionChange?.(nextPos);
-      
-      // Realistic rotation based on velocity
-      const rotSpeed = speed * 3;
+
+      // Rotation follows velocity direction and spin
+      const rotSpeed = newV.length() * 2.5;
       setRotation([
-        rx + rotSpeed * delta,
-        ry + (vx * delta * 2),
-        rz + (vz * delta * 2)
+        rx + rotSpeed * delta + oy * 0.02,
+        ry + (newV.x * delta * 1.5),
+        rz + (newV.z * delta * 1.5)
       ]);
-      
+
       shuttleRef.current.rotation.set(...rotation);
       
       // Net collision detection
       if (Math.abs(x) < 0.2 && y < 2.5 && y > 0.5) {
-        setVelocity([-vx * 0.3, Math.abs(vy) * 0.5, vz * 0.8]);
+        const bounce = new THREE.Vector3(-v.x * 0.3, Math.abs(v.y) * 0.5, v.z * 0.8);
+        setVelocity([bounce.x, bounce.y, bounce.z]);
         setLastHitTime(state.clock.elapsedTime);
       }
       
@@ -67,11 +85,12 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       }
       
       // Reset if hits ground or goes too far
-      if (newY <= 0.12 || Math.abs(newX) > 10 || Math.abs(newZ) > 8) {
+      if (Math.abs(newX) > 10 || Math.abs(newZ) > 8 || (newY <= 0.12 && Math.abs(newV.y) < 0.5)) {
         setLastLanding({ pos: [newX, 0.12, newZ] });
         setTimeout(() => {
           setVelocity([0, 0, 0]);
           setRotation([0, 0, 0]);
+          setSpin([0, 0, 0]);
           setIsInPlay(false);
         }, 400);
       }
@@ -79,8 +98,8 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       // Idle near player's racket when not in play
       if (idleAnchor) {
         const [ax, ay, az] = idleAnchor;
-        const floatY = 0.9 + Math.sin(state.clock.elapsedTime * 0.8) * 0.05;
-        const anchorPos: [number, number, number] = [ax + 0.4, floatY, az];
+        const floatY = 0.95 + Math.sin(state.clock.elapsedTime * 0.8) * 0.04;
+        const anchorPos: [number, number, number] = [ax + (ax > 0 ? -0.2 : 0.2), floatY, az];
         setPosition(anchorPos);
         onPositionChange?.(anchorPos);
       } else {
@@ -143,11 +162,11 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     setIsInPlay(true);
     const [dx, dy, dz] = playerHit.dir;
     const power = Math.max(0.2, Math.min(1.5, playerHit.power));
-    // Stronger cross-net X velocity, slight topspin arc, minimal Z drift
-    const vx = dx * power * 8;
-    const vy = Math.max(2.2, dy * power * 4.5);
-    const vz = dz * power * 2;
+    const vx = dx * power * 8.5;
+    const vy = Math.max(2.2, dy * power * 5.2);
+    const vz = dz * power * 2.5;
     setVelocity([vx, vy, vz]);
+    setSpin(playerHit.spin || [0, 0, 0]);
     setLastHitTime(Date.now());
   }, [playerHit]);
 
