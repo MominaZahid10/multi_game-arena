@@ -502,9 +502,10 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         setFacingDirection(tx > playerPos[0] ? 1 : -1);
       }
 
-      // Face the net properly
+      // Face across the net (toward center line)
       if (groupRef.current) {
-        groupRef.current.rotation.set(0, facingDirection > 0 ? -Math.PI / 2 : Math.PI / 2, 0);
+        const target = new THREE.Vector3(0, playerPos[1], playerPos[2]);
+        groupRef.current.lookAt(target);
       }
     }
   });
@@ -1485,6 +1486,20 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     }
   }, [raceCountdown]);
 
+  // Auto-start racing on input if not started
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (gameType !== 'racing') return;
+      const k = e.key.toLowerCase();
+      if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+        if (!gameStarted) { setGameStarted(true); setPaused(false); setRaceOver(null); setRaceCountdown(3); }
+        else if (!raceRunning && raceCountdown === null) { setRaceOver(null); setRaceCountdown(3); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gameStarted, gameType, raceRunning, raceCountdown]);
+
   // Racing proximity AI reactions
   useEffect(() => {
     if (!raceRunning) { setAiRaceCmd1(null); setAiRaceCmd2(null); return; }
@@ -1575,9 +1590,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       case 'racing':
         return (
           <>
-            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused || !raceRunning || !!raceOver} onPositionUpdate={setPlayerCarPos} />
-            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused || !raceRunning || !!raceOver} aiCommand={aiRaceCmd || aiRaceCmd1} targetX={playerCarPos[0]} onPositionUpdate={setAiCar1Pos} />
-            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused || !raceRunning || !!raceOver} aiCommand={aiRaceCmd2} targetX={playerCarPos[0]} onPositionUpdate={setAiCar2Pos} />
+            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused || !!raceOver} raceRunning={raceRunning} onPositionUpdate={setPlayerCarPos} />
+            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused || !!raceOver} raceRunning={raceRunning} aiCommand={aiRaceCmd || aiRaceCmd1} targetX={playerCarPos[0]} onPositionUpdate={setAiCar1Pos} />
+            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused || !!raceOver} raceRunning={raceRunning} aiCommand={aiRaceCmd2} targetX={playerCarPos[0]} onPositionUpdate={setAiCar2Pos} />
           </>
         );
       default:
