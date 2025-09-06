@@ -920,7 +920,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
-      const clampedZ = Math.max(-98, Math.min(98, newZ));
+      const clampedZ = Math.max(-198, Math.min(198, newZ));
 
       const nextPos: [number, number, number] = [clampedX, -1.75, clampedZ];
       setCarPosition(nextPos); // Car properly on ground
@@ -1280,32 +1280,32 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {gameType === 'racing' && (
         <>
           {/* Main track surface - darker for night */}
-          <Plane args={[15, 200]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
+          <Plane args={[15, 400]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
             <meshPhongMaterial color="#1A1A1A" roughness={0.8} />
           </Plane>
 
           {/* Illuminated track borders */}
-          <Box args={[0.3, 0.2, 200]} position={[-7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 400]} position={[-7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
-          <Box args={[0.3, 0.2, 200]} position={[7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 400]} position={[7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
 
           {/* Reflective center line */}
-          {Array.from({ length: 100 }, (_, i) => (
-            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+          {Array.from({ length: 200 }, (_, i) => (
+            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
               <meshBasicMaterial color="#FFD700" />
             </Box>
           ))}
 
           {/* Reflective lane dividers */}
-          {Array.from({ length: 100 }, (_, i) => (
+          {Array.from({ length: 200 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
-              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -98 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
             </React.Fragment>
@@ -1362,7 +1362,7 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           ))}
 
           {/* Night sky background */}
-          <Plane args={[80, 15]} position={[0, 6, -25]} rotation={[0, 0, 0]}>
+          <Plane args={[120, 20]} position={[0, 8, -100]} rotation={[0, 0, 0]}>
             <meshBasicMaterial color="#0A0A1A" />
           </Plane>
 
@@ -1507,9 +1507,9 @@ const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | '
   useFrame(() => {
     if (gameType !== 'racing' || !playerCarPos) return;
     const car = new THREE.Vector3(...playerCarPos);
-    const desired = car.clone().add(new THREE.Vector3(0, 3, 6)); // trailing and above
-    camera.position.lerp(desired, 0.04);
-    camera.lookAt(car.x, car.y + 0.3, car.z - 2);
+    const desired = car.clone().add(new THREE.Vector3(0, 4.5, 8)); // higher and farther to reduce jitter
+    camera.position.lerp(desired, 0.02);
+    camera.lookAt(car.x, car.y + 0.5, car.z - 4);
   });
 
   return null;
@@ -1695,7 +1695,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             position: [6, 2, 6],
             fov: gameType === 'racing' ? 60 : 75,
             near: 0.1,
-            far: 200
+            far: 1000
           }}
           shadows
           gl={{
