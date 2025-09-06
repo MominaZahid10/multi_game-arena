@@ -1000,11 +1000,11 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
           send('brake');
           break;
         case 'a':
-          setSteering(prev => Math.max(prev - 0.05, -0.5));
+          setSteerInput(-1);
           send('steer');
           break;
         case 'd':
-          setSteering(prev => Math.min(prev + 0.05, 0.5));
+          setSteerInput(1);
           send('steer');
           break;
       }
@@ -1019,8 +1019,10 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
           setIsBraking(false);
           break;
         case 'a':
+          setSteerInput(0);
+          break;
         case 'd':
-          setSteering(0);
+          setSteerInput(0);
           break;
       }
     };
