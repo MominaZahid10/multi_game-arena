@@ -694,9 +694,21 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         if (rightArmRef.current) {
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
         }
-        // Emit player hit impulse toward opponent across the net (±X)
-        const hitDirX = playerPos[0] > 0 ? -1 : 1;
-        onPlayerHit?.([hitDirX, 0.6, 0], Math.max(0.3, Math.min(1, power)));
+        // Collision-based impact with shuttlecock near racket head
+        const headLocal = new THREE.Vector3(0, 0.48, 0);
+        const headWorld = racketRef.current.localToWorld(headLocal.clone());
+        const sh = followTarget || [0,0,0];
+        const shPos = new THREE.Vector3(sh[0], sh[1], sh[2]);
+        const dist = headWorld.distanceTo(shPos);
+        if (dist < 0.6) {
+          const sweet = dist < 0.35;
+          const across = playerPos[0] > 0 ? -1 : 1;
+          const faceDir = new THREE.Vector3(0, 0, 1).applyQuaternion(racketRef.current.getWorldQuaternion(new THREE.Quaternion())).normalize();
+          const dir = new THREE.Vector3(across, 0.5, 0).add(faceDir.multiplyScalar(0.5)).normalize();
+          const mishit = !sweet ? 0.6 : 1;
+          const spin = new THREE.Vector3(0, across * 10 * (sweet ? 1 : 1.5), 0);
+          onPlayerHit?.([dir.x, dir.y, dir.z], Math.max(0.25, Math.min(1, power)) * mishit, [spin.x, spin.y, spin.z]);
+        }
       }
     }, 100);
 
