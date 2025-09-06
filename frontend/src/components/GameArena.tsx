@@ -883,6 +883,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
   const [carPosition, setCarPosition] = useState(position);
   const [velocity, setVelocity] = useState(0);
   const [steering, setSteering] = useState(0);
+  const [steerInput, setSteerInput] = useState(0);
   const [isAccelerating, setIsAccelerating] = useState(false);
   const [isBraking, setIsBraking] = useState(false);
 
