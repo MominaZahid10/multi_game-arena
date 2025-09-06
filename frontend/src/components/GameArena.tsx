@@ -532,16 +532,30 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         }
       }
 
-      // AI follows shuttlecock horizontally (stay on its half)
+      // AI anticipates landing point and moves (stay on its half)
       if (isAI && followTarget) {
-        const [tx, , tz] = followTarget;
-        const speed = 0.08;
-        const nx = playerPos[0] + Math.sign(tx - playerPos[0]) * speed;
-        const nz = playerPos[2] + Math.sign(tz - playerPos[2]) * speed;
+        const [sx, sy, sz] = followTarget;
+        const [vx = 0, vy = 0, vz = 0] = followVel || [0, 0, 0];
+        const g = -12;
+        const a = 0.5 * g;
+        const b = vy;
+        const c = sy - 0.12;
+        let tHit = 0.5;
+        const disc = b*b - 4*a*c;
+        if (disc >= 0) {
+          const t1 = (-b + Math.sqrt(disc)) / (2*a);
+          const t2 = (-b - Math.sqrt(disc)) / (2*a);
+          tHit = Math.max(t1, t2, 0.2);
+        }
+        const targetX = sx + vx * tHit;
+        const targetZ = sz + vz * tHit;
+        const speed = 0.1;
+        const nx = playerPos[0] + Math.sign(targetX - playerPos[0]) * speed;
+        const nz = playerPos[2] + Math.sign(targetZ - playerPos[2]) * speed;
         const rightSide = position[0] > 0;
         const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
         setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
-        setFacingDirection(tx > playerPos[0] ? 1 : -1);
+        setFacingDirection(sx > playerPos[0] ? 1 : -1);
       }
 
       // Face across the net (toward center line)
