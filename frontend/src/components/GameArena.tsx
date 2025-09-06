@@ -28,8 +28,65 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const [isBlocking, setIsBlocking] = useState(false);
   const [position2D, setPosition2D] = useState(position);
   const [facingDirection, setFacingDirection] = useState<number>(initialFacing);
+  const velRef = useRef<{x:number,y:number,z:number}>({x:0,y:0,z:0});
+  const inputRef = useRef<{x:number,z:number}>({x:0,z:0});
+  const groundedRef = useRef<boolean>(true);
 
   useEffect(() => { onPositionChange?.(position2D); }, [position2D, onPositionChange]);
+
+  // Physics integration for movement and gravity
+  useFrame((state, delta) => {
+    if (paused) return;
+    const accel = 10;
+    const maxSpeed = 3.5;
+    const frictionPerFrame = 0.85;
+    const friction = Math.pow(frictionPerFrame, 60 * delta);
+    const v = velRef.current;
+    const inp = inputRef.current;
+
+    if (inp.x !== 0) {
+      v.x += inp.x * accel * delta;
+    } else {
+      v.x *= friction;
+    }
+    if (inp.z !== 0) {
+      v.z += inp.z * accel * delta;
+    } else {
+      v.z *= friction;
+    }
+
+    const speed = Math.hypot(v.x, v.z);
+    if (speed > maxSpeed) {
+      const s = maxSpeed / speed;
+      v.x *= s; v.z *= s;
+    }
+
+    // Gravity
+    const g = -9.8;
+    const terminal = -20;
+    if (!groundedRef.current) {
+      v.y = Math.max(terminal, v.y + g * delta);
+    }
+
+    // Integrate
+    let nx = position2D[0] + v.x * delta;
+    let ny = position2D[1] + v.y * delta;
+    let nz = position2D[2] + v.z * delta;
+
+    if (ny <= 0) {
+      ny = 0;
+      v.y = 0;
+      groundedRef.current = true;
+    } else {
+      groundedRef.current = false;
+    }
+
+    nx = Math.max(-6, Math.min(6, nx));
+    nz = Math.max(-4, Math.min(4, nz));
+
+    setPosition2D([nx, ny, nz]);
+    setIsWalking(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
+  });
 
   useFrame((state, delta) => {
     if (paused) return;
@@ -201,8 +258,6 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isAttacking) return;
 
-      const moveSpeed = 0.08;
-
       const pushMove = () => {
         import('@/lib/analytics').then(({ addAction }) => {
           const x = position2D[0];
@@ -222,23 +277,23 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
       switch (event.key.toLowerCase()) {
         case 'w':
-          setPosition2D(prev => [prev[0], prev[1], Math.max(-4, prev[2] - moveSpeed)]);
+          inputRef.current.z = -1;
           setIsWalking(true);
           pushMove();
           break;
         case 's':
-          setPosition2D(prev => [prev[0], prev[1], Math.min(4, prev[2] + moveSpeed)]);
+          inputRef.current.z = 1;
           setIsWalking(true);
           pushMove();
           break;
         case 'a':
-          setPosition2D(prev => [Math.max(-6, prev[0] - moveSpeed), prev[1], prev[2]]);
+          inputRef.current.x = -1;
           setFacingDirection(-1);
           setIsWalking(true);
           pushMove();
           break;
         case 'd':
-          setPosition2D(prev => [Math.min(6, prev[0] + moveSpeed), prev[1], prev[2]]);
+          inputRef.current.x = 1;
           setFacingDirection(1);
           setIsWalking(true);
           pushMove();
@@ -250,11 +305,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       switch (event.key.toLowerCase()) {
         case 'w':
         case 's':
+          inputRef.current.z = 0;
+          break;
         case 'a':
         case 'd':
-          setIsWalking(false);
+          inputRef.current.x = 0;
           break;
       }
+      if (inputRef.current.x === 0 && inputRef.current.z === 0) setIsWalking(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -263,7 +321,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPlayer, isAttacking, position2D]);
+  }, [isPlayer, isAttacking]);
 
   // Simple AI reactions
   useEffect(() => {
@@ -332,27 +390,10 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
           }
           break;
         case ' ':
-          // Jump animation with realistic arc
-          if (meshRef.current && !isAttacking && !isBlocking) {
-            const originalY = position2D[1];
-            let jumpHeight = 0;
-            const jumpDuration = 600;
-            const startTime = Date.now();
-
-            const animateJump = () => {
-              const elapsed = Date.now() - startTime;
-              const progress = Math.min(elapsed / jumpDuration, 1);
-
-              // Parabolic jump curve
-              jumpHeight = Math.sin(progress * Math.PI) * 0.8;
-              setPosition2D(prev => [prev[0], originalY + jumpHeight, prev[2]]);
-
-              if (progress < 1) {
-                requestAnimationFrame(animateJump);
-              }
-            };
-
-            animateJump();
+          if (!isAttacking && !isBlocking && groundedRef.current) {
+            const v0 = 4.9; // initial jump velocity to reach ~1.2m
+            velRef.current.y = v0;
+            groundedRef.current = false;
           }
           break;
       }
@@ -695,19 +736,28 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
         }
         // Collision-based impact with shuttlecock near racket head
-        const headLocal = new THREE.Vector3(0, 0.48, 0);
+            const headLocal = new THREE.Vector3(0, 0.48, 0);
         const headWorld = racketRef.current.localToWorld(headLocal.clone());
         const sh = followTarget || [0,0,0];
         const shPos = new THREE.Vector3(sh[0], sh[1], sh[2]);
-        const dist = headWorld.distanceTo(shPos);
-        if (dist < 0.6) {
-          const sweet = dist < 0.35;
-          const across = playerPos[0] > 0 ? -1 : 1;
-          const faceDir = new THREE.Vector3(0, 0, 1).applyQuaternion(racketRef.current.getWorldQuaternion(new THREE.Quaternion())).normalize();
-          const dir = new THREE.Vector3(across, 0.5, 0).add(faceDir.multiplyScalar(0.5)).normalize();
-          const mishit = !sweet ? 0.6 : 1;
-          const spin = new THREE.Vector3(0, across * 10 * (sweet ? 1 : 1.5), 0);
-          onPlayerHit?.([dir.x, dir.y, dir.z], Math.max(0.25, Math.min(1, power)) * mishit, [spin.x, spin.y, spin.z]);
+
+        const worldQuat = racketRef.current.getWorldQuaternion(new THREE.Quaternion());
+        const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat).normalize();
+        const toSh = shPos.clone().sub(headWorld);
+        const d = toSh.dot(normal);
+        if (Math.abs(d) < 0.06) {
+          const proj = shPos.clone().sub(normal.clone().multiplyScalar(d));
+          const radial = proj.clone().sub(headWorld);
+          const r = radial.length();
+          if (r > 0.08 && r < 0.16) {
+            const across = playerPos[0] > 0 ? -1 : 1;
+            const faceDir = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize();
+            const dir = new THREE.Vector3(across, 0.5, 0).add(faceDir.multiplyScalar(0.5)).normalize();
+            const sweet = Math.abs(r - 0.12) < 0.02;
+            const mishit = sweet ? 1 : 0.7;
+            const spin = new THREE.Vector3(0, across * 10 * (sweet ? 1 : 1.5), 0);
+            onPlayerHit?.([dir.x, dir.y, dir.z], Math.max(0.25, Math.min(1, power)) * mishit, [spin.x, spin.y, spin.z]);
+          }
         }
       }
     }, 100);
@@ -1507,9 +1557,9 @@ const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | '
   useFrame(() => {
     if (gameType !== 'racing' || !playerCarPos) return;
     const car = new THREE.Vector3(...playerCarPos);
-    const desired = car.clone().add(new THREE.Vector3(0, 4.5, 8)); // higher and farther to reduce jitter
-    camera.position.lerp(desired, 0.02);
-    camera.lookAt(car.x, car.y + 0.5, car.z - 4);
+    const desired = car.clone().add(new THREE.Vector3(0, 3, 5));
+    camera.position.lerp(desired, 0.05);
+    camera.lookAt(car.x, car.y + 0.5, car.z - 2);
   });
 
   return null;
@@ -1616,6 +1666,8 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       if (dist < 1.0) {
         const dmg = aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' ? 12 : 8;
         setPlayerHealth(h => Math.max(0, h - dmg));
+        const back = Math.sign(playerPosF[0] - aiPosF[0]) || 1;
+        setPlayerPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
       }
     }
   }, [aiFightCmd, aiPosF, playerPosF]);
@@ -1630,6 +1682,8 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         if (dist < 1.0) {
           const dmg = e.key.toLowerCase() === 'k' ? 12 : 8;
           setAiHealth(h => Math.max(0, h - dmg));
+          const back = Math.sign(aiPosF[0] - playerPosF[0]) || -1;
+          setAiPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
         }
       }
     };
