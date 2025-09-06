@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Box, Sphere, Plane } from '@react-three/drei';
 import { motion } from 'framer-motion';
 import * as THREE from 'three';
 import Shuttlecock from './Shuttlecock';
 import ScoreBar from './ScoreBar';
+import { useMultiGameWebSocket } from '@/hooks/useMultiGameWebSocket';
 
 interface GameArenaProps {
   gameType: 'fighting' | 'badminton' | 'racing';
@@ -14,7 +15,8 @@ interface GameArenaProps {
 }
 
 // Fighter Character Component - Realistic with animations
-const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1, engaged = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, initialFacing?: -1 | 1, engaged?: boolean, paused?: boolean }) => {
+type FightingAI = 'combo_attack' | 'defensive_counter' | 'rush_forward' | 'punch' | 'kick' | 'block' | null;
+const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1, engaged = false, paused = false, opponentPosition, onPositionChange, aiCommand = null }: { position: [number, number, number], color: string, isPlayer?: boolean, initialFacing?: -1 | 1, engaged?: boolean, paused?: boolean, opponentPosition?: [number, number, number], onPositionChange?: (pos: [number, number, number]) => void, aiCommand?: FightingAI }) => {
   const meshRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Mesh>(null);
   const rightArmRef = useRef<THREE.Mesh>(null);
@@ -26,6 +28,68 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const [isBlocking, setIsBlocking] = useState(false);
   const [position2D, setPosition2D] = useState(position);
   const [facingDirection, setFacingDirection] = useState<number>(initialFacing);
+  const velRef = useRef<{x:number,y:number,z:number}>({x:0,y:0,z:0});
+  const inputRef = useRef<{x:number,z:number}>({x:0,z:0});
+  const groundedRef = useRef<boolean>(true);
+
+  // Keep internal position in sync with external prop (e.g., knockback)
+  useEffect(() => { setPosition2D(position); }, [position]);
+
+  useEffect(() => { onPositionChange?.(position2D); }, [position2D, onPositionChange]);
+
+  // Physics integration for movement and gravity
+  useFrame((state, delta) => {
+    if (paused) return;
+    const accel = 10;
+    const maxSpeed = 3.5;
+    const frictionPerFrame = 0.85;
+    const friction = Math.pow(frictionPerFrame, 60 * delta);
+    const v = velRef.current;
+    const inp = inputRef.current;
+
+    if (inp.x !== 0) {
+      v.x += inp.x * accel * delta;
+    } else {
+      v.x *= friction;
+    }
+    if (inp.z !== 0) {
+      v.z += inp.z * accel * delta;
+    } else {
+      v.z *= friction;
+    }
+
+    const speed = Math.hypot(v.x, v.z);
+    if (speed > maxSpeed) {
+      const s = maxSpeed / speed;
+      v.x *= s; v.z *= s;
+    }
+
+    // Gravity
+    const g = -9.8;
+    const terminal = -20;
+    if (!groundedRef.current) {
+      v.y = Math.max(terminal, v.y + g * delta);
+    }
+
+    // Integrate
+    let nx = position2D[0] + v.x * delta;
+    let ny = position2D[1] + v.y * delta;
+    let nz = position2D[2] + v.z * delta;
+
+    if (ny <= 0) {
+      ny = 0;
+      v.y = 0;
+      groundedRef.current = true;
+    } else {
+      groundedRef.current = false;
+    }
+
+    nx = Math.max(-6, Math.min(6, nx));
+    nz = Math.max(-4, Math.min(4, nz));
+
+    setPosition2D([nx, ny, nz]);
+    setIsWalking(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
+  });
 
   useFrame((state, delta) => {
     if (paused) return;
@@ -68,9 +132,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
         meshRef.current.position.y = position2D[1] + Math.abs(Math.sin(walkCycle * 2)) * 0.05;
       }
 
-      // Always face opponent properly
+      // Always face opponent using lookAt to keep orientation toward the other fighter
       if (meshRef.current) {
-        meshRef.current.rotation.set(0, facingDirection < 0 ? Math.PI : 0, 0);
+        if (opponentPosition) {
+          const target = new THREE.Vector3(opponentPosition[0], position2D[1], opponentPosition[2]);
+          meshRef.current.lookAt(target);
+        } else {
+          meshRef.current.rotation.set(0, facingDirection < 0 ? Math.PI : 0, 0);
+        }
       }
     }
   });
@@ -104,44 +173,85 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       });
     });
 
-    if (attackType === 'punch') {
-      // Realistic punch animation with full body movement
-      if (rightArmRef.current && bodyRef.current) {
-        rightArmRef.current.rotation.x = -Math.PI / 2;
-        rightArmRef.current.rotation.z = facingDirection * -0.3;
-        bodyRef.current.rotation.y = facingDirection * -0.1;
-      }
+    // Three-phase animation: wind-up -> strike (forward) -> recover
+    const now = Date.now();
+    const windup = 120;
+    const strike = attackType === 'kick' ? 160 : 120;
+    const recover = 180;
 
-      // Forward lunge with proper spacing
-      setPosition2D([originalX + (facingDirection * 0.3), position2D[1], position2D[2]]);
+    const start = now;
+    const end1 = start + windup;
+    const end2 = end1 + strike;
+    const end3 = end2 + recover;
 
-      setTimeout(() => {
-        if (rightArmRef.current && bodyRef.current) {
-          rightArmRef.current.rotation.x = 0;
-          rightArmRef.current.rotation.z = 0;
-          bodyRef.current.rotation.y = 0;
+    const startZ = position2D[2];
+    const startX = position2D[0];
+
+    const animate = () => {
+      const t = Date.now();
+      if (t <= end1) {
+        // Wind-up
+        const p = (t - start) / windup;
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -p * (Math.PI / 6);
+          rightArmRef.current.position.z = p * 0.15;
+          if (bodyRef.current) bodyRef.current.rotation.y = facingDirection * -0.1 * p;
         }
-        setPosition2D([originalX, position2D[1], position2D[2]]);
-        setIsAttacking(false);
-      }, 400);
-    } else if (attackType === 'kick') {
-      // Kick animation
-      if (rightLegRef.current && bodyRef.current) {
-        rightLegRef.current.rotation.x = Math.PI / 3;
-        bodyRef.current.rotation.y = facingDirection * -0.15;
-      }
-
-      setPosition2D([originalX + (facingDirection * 0.4), position2D[1], position2D[2]]);
-
-      setTimeout(() => {
-        if (rightLegRef.current && bodyRef.current) {
-          rightLegRef.current.rotation.x = 0;
-          bodyRef.current.rotation.y = 0;
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -p * (Math.PI / 10);
+          rightLegRef.current.position.z = p * 0.18;
+          if (bodyRef.current) bodyRef.current.rotation.y = facingDirection * 0.12 * p;
         }
-        setPosition2D([originalX, position2D[1], position2D[2]]);
-        setIsAttacking(false);
-      }, 500);
-    }
+        requestAnimationFrame(animate);
+        return;
+      }
+      if (t <= end2) {
+        // Strike forward with body lunge
+        const p = (t - end1) / strike;
+        const lunge = (attackType === 'kick' ? 0.45 : 0.3) * p;
+        setPosition2D([startX + facingDirection * lunge, position2D[1], startZ]);
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -Math.PI / 4;
+          rightArmRef.current.position.z = 0.3 * p + 0.15;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = Math.PI / 8 * p;
+          if (bodyRef.current) bodyRef.current.position.z = 0.05 * p;
+        }
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -Math.PI / 6;
+          rightLegRef.current.position.z = 0.35 * p + 0.18;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = Math.PI / 12 * p;
+          if (bodyRef.current) bodyRef.current.position.z = 0.06 * p;
+        }
+        requestAnimationFrame(animate);
+        return;
+      }
+      if (t <= end3) {
+        // Recovery back to stance
+        const p = (t - end2) / recover;
+        setPosition2D([startX + facingDirection * (1 - p) * (attackType === 'kick' ? 0.45 : 0.3), position2D[1], startZ]);
+        if (attackType === 'punch' && rightArmRef.current) {
+          rightArmRef.current.rotation.x = -(1 - p) * (Math.PI / 4);
+          rightArmRef.current.position.z = (1 - p) * 0.3;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = Math.PI / 8 * (1 - p);
+          if (bodyRef.current) { bodyRef.current.position.z = 0.05 * (1 - p); bodyRef.current.rotation.y = 0; }
+        }
+        if (attackType === 'kick' && rightLegRef.current) {
+          rightLegRef.current.rotation.x = -(1 - p) * (Math.PI / 6);
+          rightLegRef.current.position.z = (1 - p) * 0.35;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = Math.PI / 12 * (1 - p);
+          if (bodyRef.current) { bodyRef.current.position.z = 0.06 * (1 - p); bodyRef.current.rotation.y = 0; }
+        }
+        requestAnimationFrame(animate);
+        return;
+      }
+      // End
+      if (rightArmRef.current) { rightArmRef.current.rotation.x = 0; rightArmRef.current.position.z = 0; }
+      if (rightLegRef.current) { rightLegRef.current.rotation.x = 0; rightLegRef.current.position.z = 0; }
+      setPosition2D([startX, position2D[1], startZ]);
+      setIsAttacking(false);
+    };
+
+    animate();
   };
 
   // Enhanced movement with WASD
@@ -150,8 +260,6 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isAttacking) return;
-
-      const moveSpeed = 0.08;
 
       const pushMove = () => {
         import('@/lib/analytics').then(({ addAction }) => {
@@ -172,23 +280,23 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
       switch (event.key.toLowerCase()) {
         case 'w':
-          setPosition2D(prev => [prev[0], prev[1], Math.max(-4, prev[2] - moveSpeed)]);
+          inputRef.current.z = -1;
           setIsWalking(true);
           pushMove();
           break;
         case 's':
-          setPosition2D(prev => [prev[0], prev[1], Math.min(4, prev[2] + moveSpeed)]);
+          inputRef.current.z = 1;
           setIsWalking(true);
           pushMove();
           break;
         case 'a':
-          setPosition2D(prev => [Math.max(-6, prev[0] - moveSpeed), prev[1], prev[2]]);
+          inputRef.current.x = -1;
           setFacingDirection(-1);
           setIsWalking(true);
           pushMove();
           break;
         case 'd':
-          setPosition2D(prev => [Math.min(6, prev[0] + moveSpeed), prev[1], prev[2]]);
+          inputRef.current.x = 1;
           setFacingDirection(1);
           setIsWalking(true);
           pushMove();
@@ -200,11 +308,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       switch (event.key.toLowerCase()) {
         case 'w':
         case 's':
+          inputRef.current.z = 0;
+          break;
         case 'a':
         case 'd':
-          setIsWalking(false);
+          inputRef.current.x = 0;
           break;
       }
+      if (inputRef.current.x === 0 && inputRef.current.z === 0) setIsWalking(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -213,7 +324,26 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPlayer, isAttacking, position2D]);
+  }, [isPlayer, isAttacking]);
+
+  // Simple AI reactions
+  useEffect(() => {
+    if (isPlayer || paused) return;
+    if (!aiCommand) return;
+    if (aiCommand === 'rush_forward' && opponentPosition) {
+      const toward = opponentPosition[0] > position2D[0] ? 1 : -1;
+      setFacingDirection(toward);
+      setIsWalking(true);
+      setPosition2D(prev => [prev[0] + toward * 0.12, prev[1], prev[2]]);
+      setTimeout(() => setIsWalking(false), 250);
+    }
+    if (aiCommand === 'punch' || aiCommand === 'combo_attack') {
+      if (opponentPosition) {
+        const toward = opponentPosition[0] > position2D[0] ? 1 : -1;
+        setPosition2D(prev => [prev[0] + toward * 0.08, prev[1], prev[2]]);
+      }
+    }
+  }, [aiCommand, isPlayer, opponentPosition, paused, position2D]);
 
   // Combat controls
   useEffect(() => {
@@ -263,27 +393,10 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
           }
           break;
         case ' ':
-          // Jump animation with realistic arc
-          if (meshRef.current && !isAttacking && !isBlocking) {
-            const originalY = position2D[1];
-            let jumpHeight = 0;
-            const jumpDuration = 600;
-            const startTime = Date.now();
-
-            const animateJump = () => {
-              const elapsed = Date.now() - startTime;
-              const progress = Math.min(elapsed / jumpDuration, 1);
-
-              // Parabolic jump curve
-              jumpHeight = Math.sin(progress * Math.PI) * 0.8;
-              setPosition2D(prev => [prev[0], originalY + jumpHeight, prev[2]]);
-
-              if (progress < 1) {
-                requestAnimationFrame(animateJump);
-              }
-            };
-
-            animateJump();
+          if (!isAttacking && !isBlocking && groundedRef.current) {
+            const v0 = 4.9; // initial jump velocity to reach ~1.2m
+            velRef.current.y = v0;
+            groundedRef.current = false;
           }
           break;
       }
@@ -411,7 +524,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -424,9 +537,36 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
   const [isMoving, setIsMoving] = useState(false);
   const [racketPower, setRacketPower] = useState(0);
   const [facingDirection, setFacingDirection] = useState<number>(position[0] > 0 ? -1 : 1);
+  const mVelRef = useRef<{x:number,z:number}>({x:0,z:0});
+  const mInputRef = useRef<{x:number,z:number}>({x:0,z:0});
 
   useFrame((state, delta) => {
     if (paused) return;
+
+    // Player-controlled movement physics (accel/decel)
+    if (isPlayer) {
+      const accel = 8;
+      const maxSpeed = 4.5;
+      const frictionPerFrame = 0.85;
+      const friction = Math.pow(frictionPerFrame, 60 * delta);
+      const v = mVelRef.current;
+      const inp = mInputRef.current;
+
+      if (inp.x !== 0) v.x += inp.x * accel * delta; else v.x *= friction;
+      if (inp.z !== 0) v.z += inp.z * accel * delta; else v.z *= friction;
+
+      const sp = Math.hypot(v.x, v.z);
+      if (sp > maxSpeed) { const s = maxSpeed / sp; v.x *= s; v.z *= s; }
+
+      let nx = playerPos[0] + v.x * delta;
+      let nz = playerPos[2] + v.z * delta;
+      const rightSide = position[0] > 0;
+      nx = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+      nz = Math.max(-2.8, Math.min(2.8, nz));
+      if (nx !== playerPos[0] || nz !== playerPos[2]) setPlayerPos([nx, playerPos[1], nz]);
+      setIsMoving(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
+    }
+
     if (bodyRef.current) {
       if (!isSwinging && !isMoving) {
         // Natural breathing and ready stance
@@ -463,12 +603,42 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
         }
       }
 
-      // Face the net properly
+      // AI anticipates landing point and moves (stay on its half)
+      if (isAI && followTarget) {
+        const [sx, sy, sz] = followTarget;
+        const [vx = 0, vy = 0, vz = 0] = followVel || [0, 0, 0];
+        const g = -12;
+        const a = 0.5 * g;
+        const b = vy;
+        const c = sy - 0.12;
+        let tHit = 0.5;
+        const disc = b*b - 4*a*c;
+        if (disc >= 0) {
+          const t1 = (-b + Math.sqrt(disc)) / (2*a);
+          const t2 = (-b - Math.sqrt(disc)) / (2*a);
+          tHit = Math.max(t1, t2, 0.2);
+        }
+        const targetX = sx + vx * tHit;
+        const targetZ = sz + vz * tHit;
+        const speed = 0.1;
+        const nx = playerPos[0] + Math.sign(targetX - playerPos[0]) * speed;
+        const nz = playerPos[2] + Math.sign(targetZ - playerPos[2]) * speed;
+        const rightSide = position[0] > 0;
+        const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+        setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
+        setFacingDirection(sx > playerPos[0] ? 1 : -1);
+      }
+
+      // Face across the net (toward center line)
       if (groupRef.current) {
-        groupRef.current.rotation.set(0, facingDirection > 0 ? -Math.PI / 2 : Math.PI / 2, 0);
+        const target = new THREE.Vector3(0, playerPos[1], playerPos[2]);
+        groupRef.current.lookAt(target);
       }
     }
   });
+
+  // Report position changes upward
+  useEffect(() => { onPositionChange?.(playerPos); }, [playerPos, onPositionChange]);
 
   // Enhanced player movement for badminton
   useEffect(() => {
@@ -477,7 +647,6 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (paused || isSwinging) return;
 
-      const moveSpeed = 0.12;
       const pushMove = () => {
         import('@/lib/analytics').then(({ addAction }) => {
           addAction({
@@ -496,27 +665,26 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
       };
       switch (event.key.toLowerCase()) {
         case 'w':
-          setPlayerPos(prev => [prev[0], prev[1], Math.max(-5, prev[2] - moveSpeed)]);
+          mInputRef.current.z = -1;
           setIsMoving(true);
           pushMove();
           break;
         case 's':
-          setPlayerPos(prev => [prev[0], prev[1], Math.min(5, prev[2] + moveSpeed)]);
+          mInputRef.current.z = 1;
           setIsMoving(true);
           pushMove();
           break;
         case 'a':
-          setPlayerPos(prev => [Math.max(-7, prev[0] - moveSpeed), prev[1], prev[2]]);
+          mInputRef.current.x = -1;
           setIsMoving(true);
           pushMove();
           break;
         case 'd':
-          setPlayerPos(prev => [Math.min(7, prev[0] + moveSpeed), prev[1], prev[2]]);
+          mInputRef.current.x = 1;
           setIsMoving(true);
           pushMove();
           break;
         case ' ':
-          // Power swing - hold for more power
           if (!isSwinging) {
             setRacketPower(Math.min(racketPower + 0.1, 1));
           }
@@ -528,18 +696,20 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
       switch (event.key.toLowerCase()) {
         case 'w':
         case 's':
+          mInputRef.current.z = 0;
+          break;
         case 'a':
         case 'd':
-          setIsMoving(false);
+          mInputRef.current.x = 0;
           break;
         case ' ':
-          // Release swing with accumulated power
           if (!isSwinging) {
             performSwing(racketPower);
             setRacketPower(0);
           }
           break;
       }
+      if (mInputRef.current.x === 0 && mInputRef.current.z === 0) setIsMoving(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -548,7 +718,7 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPlayer, isSwinging, racketPower]);
+  }, [isPlayer, isSwinging, racketPower, paused, playerPos]);
 
   const performSwing = (power: number = 0.5) => {
     if (isSwinging || !racketRef.current) return;
@@ -593,6 +763,30 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
         // Arm extension
         if (rightArmRef.current) {
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
+        }
+        // Collision-based impact with shuttlecock near racket head
+            const headLocal = new THREE.Vector3(0, 0.48, 0);
+        const headWorld = racketRef.current.localToWorld(headLocal.clone());
+        const sh = followTarget || [0,0,0];
+        const shPos = new THREE.Vector3(sh[0], sh[1], sh[2]);
+
+        const worldQuat = racketRef.current.getWorldQuaternion(new THREE.Quaternion());
+        const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat).normalize();
+        const toSh = shPos.clone().sub(headWorld);
+        const d = toSh.dot(normal);
+        if (Math.abs(d) < 0.06) {
+          const proj = shPos.clone().sub(normal.clone().multiplyScalar(d));
+          const radial = proj.clone().sub(headWorld);
+          const r = radial.length();
+          if (r > 0.08 && r < 0.16) {
+            const across = playerPos[0] > 0 ? -1 : 1;
+            const faceDir = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize();
+            const dir = new THREE.Vector3(across, 0.5, 0).add(faceDir.multiplyScalar(0.5)).normalize();
+            const sweet = Math.abs(r - 0.12) < 0.02;
+            const mishit = sweet ? 1 : 0.7;
+            const spin = new THREE.Vector3(0, across * 10 * (sweet ? 1 : 1.5), 0);
+            onPlayerHit?.([dir.x, dir.y, dir.z], Math.max(0.25, Math.min(1, power)) * mishit, [spin.x, spin.y, spin.z]);
+          }
         }
       }
     }, 100);
@@ -761,12 +955,14 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false }: 
 };
 
 // Enhanced Racing Car Component
-const RacingCar = ({ position, color, isPlayer = false, paused = false }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean }) => {
+type RacingAI = 'overtake' | 'block_overtake' | 'perfect_racing_line' | null;
+const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunning = true, aiCommand = null, targetX, onPositionUpdate }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, raceRunning?: boolean, aiCommand?: RacingAI, targetX?: number, onPositionUpdate?: (pos:[number,number,number])=>void }) => {
   const carRef = useRef<THREE.Group>(null);
   const wheelRefs = useRef<THREE.Mesh[]>([]);
   const [carPosition, setCarPosition] = useState(position);
   const [velocity, setVelocity] = useState(0);
   const [steering, setSteering] = useState(0);
+  const [steerInput, setSteerInput] = useState(0);
   const [isAccelerating, setIsAccelerating] = useState(false);
   const [isBraking, setIsBraking] = useState(false);
 
@@ -776,26 +972,38 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false }: { posi
       // Realistic car physics
       let newVelocity = velocity;
 
-      if (isAccelerating) {
+      const accel = isAccelerating && raceRunning;
+      const brake = isBraking && raceRunning;
+
+      if (accel) {
         newVelocity = Math.min(velocity + delta * 3, 8);
-      } else if (isBraking) {
+      } else if (brake) {
         newVelocity = Math.max(velocity - delta * 5, -2);
       } else {
         // Natural deceleration
-        newVelocity = velocity * 0.98;
+        newVelocity = raceRunning ? velocity * 0.98 : 0;
       }
 
       setVelocity(newVelocity);
 
-      // Update position based on velocity and steering
-      const newX = carPosition[0] + Math.sin(steering) * newVelocity * delta;
-      const newZ = carPosition[2] + Math.cos(steering) * newVelocity * delta;
+      // Smooth steering toward input to simulate grip and tire limits
+      const steerRate = 2.2; // rad/s
+      const maxSteer = 0.6; // rad
+      const nextSteering = THREE.MathUtils.clamp(steering + steerRate * steerInput * delta, -maxSteer, maxSteer);
+      setSteering(nextSteering);
+
+      const grip = 1 - Math.min(0.6, Math.abs(nextSteering) * 0.6);
+      const moveVel = raceRunning ? newVelocity * grip : 0;
+      const newX = carPosition[0] + Math.sin(nextSteering) * moveVel * delta;
+      const newZ = carPosition[2] - Math.cos(nextSteering) * moveVel * delta;
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
-      const clampedZ = Math.max(-15, Math.min(15, newZ));
+      const clampedZ = Math.max(-198, Math.min(198, newZ));
 
-      setCarPosition([clampedX, -1.75, clampedZ]); // Car properly on ground
+      const nextPos: [number, number, number] = [clampedX, -1.75, clampedZ];
+      setCarPosition(nextPos); // Car properly on ground
+      onPositionUpdate?.(nextPos);
 
       // Car rotation based on steering
       carRef.current.rotation.y = steering;
@@ -803,18 +1011,42 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false }: { posi
       // Wheel rotation based on speed
       wheelRefs.current.forEach((wheel) => {
         if (wheel) {
-          wheel.rotation.x += newVelocity * delta * 2;
+          wheel.rotation.x += moveVel * delta * 2;
         }
       });
 
       // Engine vibration when accelerating
-      if (isAccelerating && Math.abs(newVelocity) > 0.1) {
+      if (accel && Math.abs(moveVel) > 0.1) {
         carRef.current.position.y = carPosition[1] + Math.sin(state.clock.elapsedTime * 30) * 0.005;
       } else {
         carRef.current.position.y = carPosition[1];
       }
     }
   });
+
+  // Simple AI driving
+  useEffect(() => {
+    if (isPlayer || paused) return;
+    // Keep moving forward by default
+    setIsAccelerating(true);
+    const osc = setInterval(() => {
+      setSteering(s => Math.sin(Date.now() * 0.001) * 0.2);
+    }, 200);
+
+    if (aiCommand === 'overtake') {
+      setSteering(prev => (prev < 0.2 ? prev + 0.1 : 0.2));
+      setTimeout(() => { setSteering(0); }, 1000);
+    } else if (aiCommand === 'block_overtake' && typeof targetX === 'number') {
+      const dir = targetX > carPosition[0] ? 1 : -1;
+      setSteering(dir > 0 ? 0.2 : -0.2);
+      setTimeout(() => setSteering(0), 800);
+    } else if (aiCommand === 'perfect_racing_line') {
+      // Slightly reduce steering to follow straight line
+      setSteering(0);
+    }
+
+    return () => clearInterval(osc);
+  }, [aiCommand, isPlayer, paused, targetX, carPosition]);
 
   // Enhanced car controls
   useEffect(() => {
@@ -847,11 +1079,11 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false }: { posi
           send('brake');
           break;
         case 'a':
-          setSteering(prev => Math.max(prev - 0.05, -0.5));
+          setSteerInput(-1);
           send('steer');
           break;
         case 'd':
-          setSteering(prev => Math.min(prev + 0.05, 0.5));
+          setSteerInput(1);
           send('steer');
           break;
       }
@@ -866,8 +1098,10 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false }: { posi
           setIsBraking(false);
           break;
         case 'a':
+          setSteerInput(0);
+          break;
         case 'd':
-          setSteering(0);
+          setSteerInput(0);
           break;
       }
     };
@@ -937,17 +1171,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false }: { posi
         <meshPhongMaterial color={color} />
       </Box>
 
-      {/* Speed effect when moving fast */}
-      {Math.abs(velocity) > 3 && (
-        <>
-          <Sphere args={[0.3]} position={[0, 0, -1]}>
-            <meshBasicMaterial color="#4ECDC4" transparent opacity={0.2} />
-          </Sphere>
-          <Sphere args={[0.2]} position={[0, 0, -1.5]}>
-            <meshBasicMaterial color="#A855F7" transparent opacity={0.15} />
-          </Sphere>
-        </>
-      )}
+      {/* Speed effect disabled for clarity */}
     </group>
   );
 };
@@ -1135,44 +1359,44 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {gameType === 'racing' && (
         <>
           {/* Main track surface - darker for night */}
-          <Plane args={[15, 40]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
+          <Plane args={[15, 400]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.85, 0]}>
             <meshPhongMaterial color="#1A1A1A" roughness={0.8} />
           </Plane>
 
           {/* Illuminated track borders */}
-          <Box args={[0.3, 0.2, 40]} position={[-7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 400]} position={[-7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
-          <Box args={[0.3, 0.2, 40]} position={[7.5, -1.75, 0]}>
+          <Box args={[0.3, 0.2, 400]} position={[7.5, -1.75, 0]}>
             <meshBasicMaterial color="#FF6B35" />
           </Box>
 
           {/* Reflective center line */}
-          {Array.from({ length: 20 }, (_, i) => (
-            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+          {Array.from({ length: 200 }, (_, i) => (
+            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
               <meshBasicMaterial color="#FFD700" />
             </Box>
           ))}
 
           {/* Reflective lane dividers */}
-          {Array.from({ length: 20 }, (_, i) => (
+          {Array.from({ length: 200 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
-              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -18 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
             </React.Fragment>
           ))}
 
           {/* Illuminated track barriers */}
-          {Array.from({ length: 10 }, (_, i) => (
+          {Array.from({ length: 50 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.5, 1, 3]} position={[-9, -1, -15 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[-9, -1, -147 + i * 6]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
-              <Box args={[0.5, 1, 3]} position={[9, -1, -15 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[9, -1, -147 + i * 6]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
             </React.Fragment>
@@ -1205,7 +1429,7 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           ))}
 
           {/* Start/finish line with night lighting */}
-          <Plane args={[15, 0.5]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.82, 15]}>
+          <Plane args={[15, 0.5]} rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.82, 98]}>
             <meshBasicMaterial color="#FFFFFF" />
           </Plane>
 
@@ -1217,7 +1441,7 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           ))}
 
           {/* Night sky background */}
-          <Plane args={[80, 15]} position={[0, 6, -25]} rotation={[0, 0, 0]}>
+          <Plane args={[120, 20]} position={[0, 8, -100]} rotation={[0, 0, 0]}>
             <meshBasicMaterial color="#0A0A1A" />
           </Plane>
 
@@ -1329,47 +1553,43 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
 };
 
 // Enhanced Professional Gaming Camera Controller
-const CameraController = ({ gameType }: { gameType: 'fighting' | 'badminton' | 'racing' }) => {
+const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | 'badminton' | 'racing'; playerCarPos?: [number, number, number] }) => {
   const { camera, gl } = useThree();
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
-    // Smooth camera transitions for professional gaming perspective
-    const targetPositions = {
-      fighting: { position: [4, 2, 4], target: [0, 0.5, 0] },
-      badminton: { position: [0, 4, 5], target: [0, 1, 0] },
-      racing: { position: [0, 2, 8], target: [0, -1, 0] }
-    };
-
-    const target = targetPositions[gameType];
-
-    // Smooth camera animation
-    const animateCamera = () => {
+    if (gameType !== 'racing') {
+      const targetPositions = {
+        fighting: { position: [4, 2, 4], target: [0, 0.5, 0] },
+        badminton: { position: [0, 4, 5], target: [0, 1, 0] },
+      } as const;
+      const target = targetPositions[gameType as 'fighting' | 'badminton'];
+      if (!target) return;
       const startPos = camera.position.clone();
       const endPos = new THREE.Vector3(...target.position);
       const startTime = Date.now();
-      const duration = 1000; // 1 second transition
-
+      const duration = 800;
       const animate = () => {
         const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Smooth easing function
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-        camera.position.lerpVectors(startPos, endPos, easeProgress);
+        const t = Math.min(elapsed / duration, 1);
+        const e = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(startPos, endPos, e);
         camera.lookAt(...target.target);
-
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        }
+        if (t < 1) requestAnimationFrame(animate);
       };
-
       animate();
-    };
-
-    animateCamera();
+      return;
+    }
   }, [camera, gameType]);
+
+  // Follow player car smoothly in racing
+  useFrame(() => {
+    if (gameType !== 'racing' || !playerCarPos) return;
+    const car = new THREE.Vector3(...playerCarPos);
+    const desired = car.clone().add(new THREE.Vector3(0, 3, 5));
+    camera.position.lerp(desired, 0.05);
+    camera.lookAt(car.x, car.y + 0.5, car.z - 2);
+  });
 
   return null;
 };
@@ -1377,32 +1597,171 @@ const CameraController = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
 const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnalytics, onToggleAnalytics }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [playerCarPos, setPlayerCarPos] = useState<[number, number, number]>([0, -1.75, 0]);
+  const [raceRunning, setRaceRunning] = useState(false);
+  const [raceCountdown, setRaceCountdown] = useState<number | null>(null);
+  const [raceOver, setRaceOver] = useState<string | null>(null);
+  const [aiCar1Pos, setAiCar1Pos] = useState<[number, number, number]>([2, -1.75, -3]);
+  const [aiCar2Pos, setAiCar2Pos] = useState<[number, number, number]>([0, -1.75, -6]);
+  const [aiRaceCmd1, setAiRaceCmd1] = useState<RacingAI>(null);
+  const [aiRaceCmd2, setAiRaceCmd2] = useState<RacingAI>(null);
+
+  // WebSocket & AI mapping
+  const [wsEnabled, setWsEnabled] = useState(true);
+  const { connected, lastMessage } = useMultiGameWebSocket('arena-session', wsEnabled);
+  const [aiFightCmd, setAiFightCmd] = useState<FightingAI>(null);
+  const [aiBadmintonShot, setAiBadmintonShot] = useState<'drop_shot' | 'smash' | 'clear' | 'net_shot' | null>(null);
+  const [aiRaceCmd, setAiRaceCmd] = useState<RacingAI>(null);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    const msg: any = lastMessage;
+    const game = msg.game || msg.new_game;
+    const action = msg.ai_action || msg.action;
+    if (game === 'fighting' && action) setAiFightCmd(action);
+    if (game === 'badminton' && action) setAiBadmintonShot(action);
+    if (game === 'racing' && action) setAiRaceCmd(action);
+    const t = setTimeout(() => { setAiFightCmd(null); setAiBadmintonShot(null); setAiRaceCmd(null); }, 900);
+    return () => clearTimeout(t);
+  }, [lastMessage]);
+
+  // Racing countdown timer
+  useEffect(() => {
+    if (raceCountdown === null) return;
+    if (raceCountdown > 0) {
+      const t = setTimeout(() => setRaceCountdown((c) => (c === null ? null : c - 1)), 1000);
+      return () => clearTimeout(t);
+    } else {
+      setRaceCountdown(null);
+      setRaceRunning(true);
+    }
+  }, [raceCountdown]);
+
+  // Auto-start racing on input if not started
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (gameType === 'racing' && (k === 'w' || k === 'a' || k === 's' || k === 'd')) {
+        if (!gameStarted) { setGameStarted(true); setPaused(false); setRaceOver(null); setRaceCountdown(3); }
+        else if (!raceRunning && raceCountdown === null) { setRaceOver(null); setRaceCountdown(3); }
+      }
+      if (gameType === 'badminton' && (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === ' ')) {
+        if (!gameStarted) { setGameStarted(true); setPaused(false); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gameStarted, gameType, raceRunning, raceCountdown]);
+
+  // Racing proximity AI reactions
+  useEffect(() => {
+    if (!raceRunning) { setAiRaceCmd1(null); setAiRaceCmd2(null); return; }
+    const dx1 = Math.abs(playerCarPos[0] - aiCar1Pos[0]);
+    const dz1 = playerCarPos[2] - aiCar1Pos[2];
+    setAiRaceCmd1(dx1 < 1.2 && dz1 > -0.5 && dz1 < 4 ? 'block_overtake' : null);
+    const dx2 = Math.abs(playerCarPos[0] - aiCar2Pos[0]);
+    const dz2 = playerCarPos[2] - aiCar2Pos[2];
+    setAiRaceCmd2(dx2 < 1.2 && dz2 > -0.5 && dz2 < 4 ? 'block_overtake' : null);
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos, raceRunning]);
+
+  // Racing collisions
+  useEffect(() => {
+    if (!raceRunning || raceOver) return;
+    const collides = (a:[number,number,number], b:[number,number,number]) => {
+      const dx = a[0]-b[0];
+      const dz = a[2]-b[2];
+      return Math.hypot(dx, dz) < 1.2;
+    };
+    if (collides(playerCarPos, aiCar1Pos) || collides(playerCarPos, aiCar2Pos)) {
+      setRaceOver('ACCIDENT');
+      setPaused(true);
+      setRaceRunning(false);
+    }
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos, raceRunning, raceOver]);
+
+  // Fighting state
+  const [playerHealth, setPlayerHealth] = useState(100);
+  const [aiHealth, setAiHealth] = useState(100);
+  const [playerPosF, setPlayerPosF] = useState<[number, number, number]>([-4.5, 0, 0]);
+  const [aiPosF, setAiPosF] = useState<[number, number, number]>([4.5, 0, 0]);
+
+  // Simple hit detection based on proximity
+  useEffect(() => {
+    if (!aiFightCmd) return;
+    if (aiFightCmd === 'punch' || aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' || aiFightCmd === 'rush_forward') {
+      const dx = aiPosF[0] - playerPosF[0];
+      const dz = aiPosF[2] - playerPosF[2];
+      const dist = Math.hypot(dx, dz);
+      if (dist < 1.0) {
+        const dmg = aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' ? 12 : 8;
+        setPlayerHealth(h => Math.max(0, h - dmg));
+        const back = Math.sign(playerPosF[0] - aiPosF[0]) || 1;
+        setPlayerPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
+      }
+    }
+  }, [aiFightCmd, aiPosF, playerPosF]);
+
+  // Player attack keys reduce AI health if close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') {
+        const dx = aiPosF[0] - playerPosF[0];
+        const dz = aiPosF[2] - playerPosF[2];
+        const dist = Math.hypot(dx, dz);
+        if (dist < 1.0) {
+          const dmg = e.key.toLowerCase() === 'k' ? 12 : 8;
+          setAiHealth(h => Math.max(0, h - dmg));
+          const back = Math.sign(aiPosF[0] - playerPosF[0]) || -1;
+          setAiPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [aiPosF, playerPosF]);
+
+  // Badminton state
+  const [shuttlePos, setShuttlePos] = useState<[number, number, number]>([0, 2.5, 0]);
+  const [shuttleVel, setShuttleVel] = useState<[number, number, number]>([0,0,0]);
+  const shuttlePrevRef = useRef<{pos:[number,number,number], t:number}|null>(null);
+  const updateShuttleState = (p:[number,number,number]) => {
+    const now = performance.now();
+    const prev = shuttlePrevRef.current;
+    if (prev) {
+      const dt = Math.max(0.001, (now - prev.t)/1000);
+      setShuttleVel([(p[0]-prev.pos[0])/dt, (p[1]-prev.pos[1])/dt, (p[2]-prev.pos[2])/dt]);
+    }
+    shuttlePrevRef.current = {pos: p, t: now};
+    setShuttlePos(p);
+  };
+  const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
+  const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
   const renderGameContent = () => {
     switch (gameType) {
       case 'fighting':
         return (
           <>
-            <FighterCharacter position={[-4.5, 0, 0]} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} />
-            <FighterCharacter position={[4.5, 0, 0]} color="#FF4455" initialFacing={1} engaged={gameStarted} paused={paused} />
+            <FighterCharacter position={playerPosF} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} opponentPosition={aiPosF} onPositionChange={setPlayerPosF} />
+            <FighterCharacter position={aiPosF} color="#FF4455" initialFacing={-1} engaged={gameStarted} paused={paused} opponentPosition={playerPosF} onPositionChange={setAiPosF} aiCommand={aiFightCmd} />
           </>
         );
       case 'badminton':
         return (
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
-            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} />
+            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} followVel={shuttleVel} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused} />
+            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} />
           </>
         );
       case 'racing':
         return (
           <>
-            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused} />
-            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused} />
-            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused} />
+            <RacingCar position={[-2, -1.75, 0]} color="#4ECDC4" isPlayer paused={paused || !!raceOver} raceRunning={raceRunning} onPositionUpdate={setPlayerCarPos} />
+            <RacingCar position={[2, -1.75, -3]} color="#FF6B35" paused={paused || !!raceOver} raceRunning={raceRunning} aiCommand={aiRaceCmd || aiRaceCmd1} targetX={playerCarPos[0]} onPositionUpdate={setAiCar1Pos} />
+            <RacingCar position={[0, -1.75, -6]} color="#A855F7" paused={paused || !!raceOver} raceRunning={raceRunning} aiCommand={aiRaceCmd2} targetX={playerCarPos[0]} onPositionUpdate={setAiCar2Pos} />
           </>
         );
       default:
@@ -1417,9 +1776,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         <Canvas
           camera={{
             position: [6, 2, 6],
-            fov: gameType === 'racing' ? 70 : 75,
+            fov: gameType === 'racing' ? 60 : 75,
             near: 0.1,
-            far: 100
+            far: 1000
           }}
           shadows
           gl={{
@@ -1428,10 +1787,11 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             powerPreference: "high-performance"
           }}
         >
-          <CameraController gameType={gameType} />
+          <CameraController gameType={gameType} playerCarPos={playerCarPos} />
           <OrbitControls
+            enabled={gameType !== 'racing'}
             enablePan={false}
-            enableZoom={true}
+            enableZoom={gameType !== 'racing'}
             minDistance={gameType === 'racing' ? 6 : 4}
             maxDistance={gameType === 'racing' ? 15 : 12}
             minPolarAngle={Math.PI / 12}
@@ -1440,10 +1800,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             maxAzimuthAngle={gameType === 'fighting' ? Math.PI / 3 : Math.PI / 2}
             autoRotate={false}
             enableDamping={true}
-            dampingFactor={0.08}
+            dampingFactor={0.1}
             rotateSpeed={0.5}
             zoomSpeed={0.6}
-            target={gameType === 'racing' ? [0, -1, 0] : [0, 0, 0]}
+            target={[0, 0, 0]}
           />
           
           <ArenaEnvironment gameType={gameType} />
@@ -1456,7 +1816,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         {/* Top Score Bar */}
         <div className="absolute top-4 left-0 right-0 flex justify-center">
           {gameType === 'fighting' && (
-            <ScoreBar game="fighting" playerHealth={100} aiHealth={100} rounds={[0, 0]} />
+            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={[0, 0]} />
           )}
           {gameType === 'badminton' && (
             <ScoreBar game="badminton" score={[0, 0]} />
@@ -1492,8 +1852,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             {/* Start/Pause Button (compact) */}
             <motion.button
               onClick={() => {
-                if (!gameStarted) { setGameStarted(true); setPaused(false); }
-                else { setPaused(p => !p); }
+                if (!gameStarted) {
+                  setGameStarted(true);
+                  setPaused(false);
+                  if (gameType === 'racing') { setRaceOver(null); setRaceRunning(false); setRaceCountdown(3); }
+                } else {
+                  setPaused(p => !p);
+                }
               }}
               className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
               whileHover={{ scale: 1.05 }}
@@ -1511,8 +1876,30 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             >
               Analytics
             </motion.button>
+
+            {/* WebSocket status toggle */}
+            <button
+              onClick={() => setWsEnabled((e) => !e)}
+              className="px-3 py-2 rounded-lg text-xs font-medium border border-white/10 bg-black/40 text-white"
+            >
+              {connected ? '🟢 AI Connected' : '🔴 AI Disconnected'}
+            </button>
           </div>
         </div>
+
+        {/* Center overlays */}
+        {gameType === 'racing' && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {raceCountdown !== null && (
+              <div className="text-7xl font-extrabold text-white drop-shadow-lg">{raceCountdown}</div>
+            )}
+            {raceOver && (
+              <div className="px-6 py-3 rounded-xl bg-black/70 border border-white/10 text-2xl font-bold text-red-400">
+                {raceOver}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Game Controls Info */}
         <div className="absolute bottom-4 left-4 hud-element p-4 rounded-lg">
