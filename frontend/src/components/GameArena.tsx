@@ -135,10 +135,12 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
         if (attackType === 'punch' && rightArmRef.current) {
           rightArmRef.current.rotation.x = -p * (Math.PI / 6);
           rightArmRef.current.position.z = p * 0.15;
+          if (bodyRef.current) bodyRef.current.rotation.y = facingDirection * -0.1 * p;
         }
         if (attackType === 'kick' && rightLegRef.current) {
           rightLegRef.current.rotation.x = -p * (Math.PI / 10);
           rightLegRef.current.position.z = p * 0.18;
+          if (bodyRef.current) bodyRef.current.rotation.y = facingDirection * 0.12 * p;
         }
         requestAnimationFrame(animate);
         return;
@@ -151,10 +153,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
         if (attackType === 'punch' && rightArmRef.current) {
           rightArmRef.current.rotation.x = -Math.PI / 4;
           rightArmRef.current.position.z = 0.3 * p + 0.15;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = Math.PI / 8 * p;
+          if (bodyRef.current) bodyRef.current.position.z = 0.05 * p;
         }
         if (attackType === 'kick' && rightLegRef.current) {
           rightLegRef.current.rotation.x = -Math.PI / 6;
           rightLegRef.current.position.z = 0.35 * p + 0.18;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = Math.PI / 12 * p;
+          if (bodyRef.current) bodyRef.current.position.z = 0.06 * p;
         }
         requestAnimationFrame(animate);
         return;
@@ -166,10 +172,14 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
         if (attackType === 'punch' && rightArmRef.current) {
           rightArmRef.current.rotation.x = -(1 - p) * (Math.PI / 4);
           rightArmRef.current.position.z = (1 - p) * 0.3;
+          if (leftArmRef.current) leftArmRef.current.rotation.x = Math.PI / 8 * (1 - p);
+          if (bodyRef.current) { bodyRef.current.position.z = 0.05 * (1 - p); bodyRef.current.rotation.y = 0; }
         }
         if (attackType === 'kick' && rightLegRef.current) {
           rightLegRef.current.rotation.x = -(1 - p) * (Math.PI / 6);
           rightLegRef.current.position.z = (1 - p) * 0.35;
+          if (leftLegRef.current) leftLegRef.current.rotation.x = Math.PI / 12 * (1 - p);
+          if (bodyRef.current) { bodyRef.current.position.z = 0.06 * (1 - p); bodyRef.current.rotation.y = 0; }
         }
         requestAnimationFrame(animate);
         return;
@@ -670,8 +680,9 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         if (rightArmRef.current) {
           rightArmRef.current.rotation.x = -Math.PI / 3 * swingIntensity;
         }
-        // Emit player hit impulse towards AI side (+Z)
-        onPlayerHit?.([0, 0.7, 1], Math.max(0.3, Math.min(1, power)));
+        // Emit player hit impulse toward opponent across the net (±X)
+        const hitDirX = playerPos[0] > 0 ? -1 : 1;
+        onPlayerHit?.([hitDirX, 0.6, 0], Math.max(0.3, Math.min(1, power)));
       }
     }, 100);
 
@@ -1046,17 +1057,7 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
         <meshPhongMaterial color={color} />
       </Box>
 
-      {/* Speed effect when moving fast */}
-      {Math.abs(velocity) > 3 && (
-        <>
-          <Sphere args={[0.3]} position={[0, 0, -1]}>
-            <meshBasicMaterial color="#4ECDC4" transparent opacity={0.2} />
-          </Sphere>
-          <Sphere args={[0.2]} position={[0, 0, -1.5]}>
-            <meshBasicMaterial color="#A855F7" transparent opacity={0.15} />
-          </Sphere>
-        </>
-      )}
+      {/* Speed effect disabled for clarity */}
     </group>
   );
 };
@@ -1471,9 +1472,9 @@ const CameraController = ({ gameType, playerCarPos }: { gameType: 'fighting' | '
   useFrame(() => {
     if (gameType !== 'racing' || !playerCarPos) return;
     const car = new THREE.Vector3(...playerCarPos);
-    const desired = car.clone().add(new THREE.Vector3(0, 2.5, 6)); // behind and above
-    camera.position.lerp(desired, 0.08);
-    camera.lookAt(car.x, car.y, car.z);
+    const desired = car.clone().add(new THREE.Vector3(0, 3, 6)); // trailing and above
+    camera.position.lerp(desired, 0.04);
+    camera.lookAt(car.x, car.y + 0.3, car.z - 2);
   });
 
   return null;
@@ -1525,11 +1526,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   // Auto-start racing on input if not started
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (gameType !== 'racing') return;
       const k = e.key.toLowerCase();
-      if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+      if (gameType === 'racing' && (k === 'w' || k === 'a' || k === 's' || k === 'd')) {
         if (!gameStarted) { setGameStarted(true); setPaused(false); setRaceOver(null); setRaceCountdown(3); }
         else if (!raceRunning && raceCountdown === null) { setRaceOver(null); setRaceCountdown(3); }
+      }
+      if (gameType === 'badminton' && (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === ' ')) {
+        if (!gameStarted) { setGameStarted(true); setPaused(false); }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1656,20 +1659,21 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         >
           <CameraController gameType={gameType} playerCarPos={playerCarPos} />
           <OrbitControls
+            enabled={gameType !== 'racing'}
             enablePan={false}
-            enableZoom={true}
+            enableZoom={gameType !== 'racing'}
             minDistance={gameType === 'racing' ? 6 : 4}
             maxDistance={gameType === 'racing' ? 15 : 12}
             minPolarAngle={Math.PI / 12}
             maxPolarAngle={Math.PI / 2.5}
-            minAzimuthAngle={gameType === 'fighting' ? -Math.PI / 3 : gameType === 'racing' ? -Infinity : -Math.PI / 2}
-            maxAzimuthAngle={gameType === 'fighting' ? Math.PI / 3 : gameType === 'racing' ? Infinity : Math.PI / 2}
+            minAzimuthAngle={gameType === 'fighting' ? -Math.PI / 3 : -Math.PI / 2}
+            maxAzimuthAngle={gameType === 'fighting' ? Math.PI / 3 : Math.PI / 2}
             autoRotate={false}
             enableDamping={true}
-            dampingFactor={0.08}
+            dampingFactor={0.1}
             rotateSpeed={0.5}
             zoomSpeed={0.6}
-            target={gameType === 'racing' ? [0, -1, 0] : [0, 0, 0]}
+            target={[0, 0, 0]}
           />
           
           <ArenaEnvironment gameType={gameType} />
