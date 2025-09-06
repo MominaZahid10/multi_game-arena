@@ -162,9 +162,9 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     setIsInPlay(true);
     const [dx, dy, dz] = playerHit.dir;
     const power = Math.max(0.2, Math.min(1.5, playerHit.power));
-    const vx = dx * power * 8.5;
-    const vy = Math.max(2.2, dy * power * 5.2);
-    const vz = dz * power * 2.5;
+    const vx = dx * power * 12;
+    const vy = Math.max(2.8, dy * power * 6);
+    const vz = dz * power * 2;
     setVelocity([vx, vy, vz]);
     setSpin(playerHit.spin || [0, 0, 0]);
     setLastHitTime(Date.now());
