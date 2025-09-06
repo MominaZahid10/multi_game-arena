@@ -534,9 +534,36 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
   const [isMoving, setIsMoving] = useState(false);
   const [racketPower, setRacketPower] = useState(0);
   const [facingDirection, setFacingDirection] = useState<number>(position[0] > 0 ? -1 : 1);
+  const mVelRef = useRef<{x:number,z:number}>({x:0,z:0});
+  const mInputRef = useRef<{x:number,z:number}>({x:0,z:0});
 
   useFrame((state, delta) => {
     if (paused) return;
+
+    // Player-controlled movement physics (accel/decel)
+    if (isPlayer) {
+      const accel = 8;
+      const maxSpeed = 4.5;
+      const frictionPerFrame = 0.85;
+      const friction = Math.pow(frictionPerFrame, 60 * delta);
+      const v = mVelRef.current;
+      const inp = mInputRef.current;
+
+      if (inp.x !== 0) v.x += inp.x * accel * delta; else v.x *= friction;
+      if (inp.z !== 0) v.z += inp.z * accel * delta; else v.z *= friction;
+
+      const sp = Math.hypot(v.x, v.z);
+      if (sp > maxSpeed) { const s = maxSpeed / sp; v.x *= s; v.z *= s; }
+
+      let nx = playerPos[0] + v.x * delta;
+      let nz = playerPos[2] + v.z * delta;
+      const rightSide = position[0] > 0;
+      nx = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+      nz = Math.max(-2.8, Math.min(2.8, nz));
+      if (nx !== playerPos[0] || nz !== playerPos[2]) setPlayerPos([nx, playerPos[1], nz]);
+      setIsMoving(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
+    }
+
     if (bodyRef.current) {
       if (!isSwinging && !isMoving) {
         // Natural breathing and ready stance
@@ -617,7 +644,6 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
     const handleKeyDown = (event: KeyboardEvent) => {
       if (paused || isSwinging) return;
 
-      const moveSpeed = 0.12;
       const pushMove = () => {
         import('@/lib/analytics').then(({ addAction }) => {
           addAction({
@@ -634,30 +660,28 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
           });
         });
       };
-      const rightSide = position[0] > 0;
       switch (event.key.toLowerCase()) {
         case 'w':
-          setPlayerPos(prev => [prev[0], prev[1], Math.max(-2.8, prev[2] - moveSpeed)]);
+          mInputRef.current.z = -1;
           setIsMoving(true);
           pushMove();
           break;
         case 's':
-          setPlayerPos(prev => [prev[0], prev[1], Math.min(2.8, prev[2] + moveSpeed)]);
+          mInputRef.current.z = 1;
           setIsMoving(true);
           pushMove();
           break;
         case 'a':
-          setPlayerPos(prev => [rightSide ? Math.max(0.6, prev[0] - moveSpeed) : Math.max(-7, Math.min(-0.6, prev[0] - moveSpeed)), prev[1], prev[2]]);
+          mInputRef.current.x = -1;
           setIsMoving(true);
           pushMove();
           break;
         case 'd':
-          setPlayerPos(prev => [rightSide ? Math.min(7, prev[0] + moveSpeed) : Math.min(-0.6, prev[0] + moveSpeed), prev[1], prev[2]]);
+          mInputRef.current.x = 1;
           setIsMoving(true);
           pushMove();
           break;
         case ' ':
-          // Power swing - hold for more power
           if (!isSwinging) {
             setRacketPower(Math.min(racketPower + 0.1, 1));
           }
@@ -669,18 +693,20 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
       switch (event.key.toLowerCase()) {
         case 'w':
         case 's':
+          mInputRef.current.z = 0;
+          break;
         case 'a':
         case 'd':
-          setIsMoving(false);
+          mInputRef.current.x = 0;
           break;
         case ' ':
-          // Release swing with accumulated power
           if (!isSwinging) {
             performSwing(racketPower);
             setRacketPower(0);
           }
           break;
       }
+      if (mInputRef.current.x === 0 && mInputRef.current.z === 0) setIsMoving(false);
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -689,7 +715,7 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isPlayer, isSwinging, racketPower]);
+  }, [isPlayer, isSwinging, racketPower, paused, playerPos]);
 
   const performSwing = (power: number = 0.5) => {
     if (isSwinging || !racketRef.current) return;
