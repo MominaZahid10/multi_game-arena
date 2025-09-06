@@ -143,14 +143,18 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     setIsInPlay(true);
     const [dx, dy, dz] = playerHit.dir;
     const power = Math.max(0.2, Math.min(1.5, playerHit.power));
-    setVelocity([dx * power * 6, Math.max(2, dy * power * 4), dz * power * 6]);
+    // Stronger cross-net X velocity, slight topspin arc, minimal Z drift
+    const vx = dx * power * 8;
+    const vy = Math.max(2.2, dy * power * 4.5);
+    const vz = dz * power * 2;
+    setVelocity([vx, vy, vz]);
     setLastHitTime(Date.now());
   }, [playerHit]);
 
   // Keep aligned to idle anchor when provided
   useEffect(() => {
     if (!isInPlay && idleAnchor) {
-      setPosition([idleAnchor[0] + 0.4, 0.9, idleAnchor[2]]);
+      setPosition([idleAnchor[0] + (idleAnchor[0] > 0 ? -0.2 : 0.2), 0.95, idleAnchor[2]]);
     }
   }, [idleAnchor, isInPlay]);
 
