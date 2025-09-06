@@ -24,8 +24,16 @@ export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', en
     };
 
     const tryConnection = (port: number) => {
-      const wsUrl = `ws://localhost:${port}/ws/multi-game/${sessionId}`;
-      const ws = new WebSocket(wsUrl);
+      const safePort = (typeof port === 'number' && isFinite(port)) ? port : 8000;
+      let ws: WebSocket | null = null;
+      try {
+        const wsUrl = `ws://localhost:${safePort}/ws/multi-game/${sessionId}`;
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        tryNextPort();
+        return;
+      }
+      if (!ws) { tryNextPort(); return; }
       wsRef.current = ws;
 
       const connectionTimeout = setTimeout(() => {

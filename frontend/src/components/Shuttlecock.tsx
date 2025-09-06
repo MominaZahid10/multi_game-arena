@@ -4,13 +4,14 @@ import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
-const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number } | null }) => {
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number } | null; idleAnchor?: [number, number, number] }) => {
   const shuttleRef = useRef<THREE.Group>(null);
   const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
   const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
   const [isInPlay, setIsInPlay] = useState(false);
   const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
   const [lastHitTime, setLastHitTime] = useState(0);
+  const [lastLanding, setLastLanding] = useState<{pos:[number,number,number]}|null>(null);
 
   useFrame((state, delta) => {
     if (paused) return;
@@ -67,20 +68,41 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       
       // Reset if hits ground or goes too far
       if (newY <= 0.12 || Math.abs(newX) > 10 || Math.abs(newZ) > 8) {
+        setLastLanding({ pos: [newX, 0.12, newZ] });
         setTimeout(() => {
-          setPosition([0, 2.5, 0]);
           setVelocity([0, 0, 0]);
           setRotation([0, 0, 0]);
           setIsInPlay(false);
-        }, 800);
+        }, 400);
       }
     } else if (shuttleRef.current) {
-      // Gentle floating when not in play
-      const floatY = 2.5 + Math.sin(state.clock.elapsedTime * 0.8) * 0.08;
-      shuttleRef.current.position.y = floatY;
+      // Idle near player's racket when not in play
+      if (idleAnchor) {
+        const [ax, ay, az] = idleAnchor;
+        const floatY = 0.9 + Math.sin(state.clock.elapsedTime * 0.8) * 0.05;
+        const anchorPos: [number, number, number] = [ax + 0.4, floatY, az];
+        setPosition(anchorPos);
+        onPositionChange?.(anchorPos);
+      } else {
+        const floatY = 2.0 + Math.sin(state.clock.elapsedTime * 0.8) * 0.08;
+        shuttleRef.current.position.y = floatY;
+      }
       shuttleRef.current.rotation.y = state.clock.elapsedTime * 0.5;
     }
   });
+
+  // If landed on AI side, auto-pick and return after short delay
+  useEffect(() => {
+    if (!isInPlay && lastLanding && lastLanding.pos[0] > 0.6) {
+      const t = setTimeout(() => {
+        setPosition([lastLanding.pos[0], 0.9, lastLanding.pos[2]]);
+        setIsInPlay(true);
+        setVelocity([-3 - Math.random()*2, 5, (Math.random()-0.5)*2]);
+        setLastHitTime(Date.now());
+      }, 700);
+      return () => clearTimeout(t);
+    }
+  }, [isInPlay, lastLanding]);
 
   // Apply AI shot commands
   useEffect(() => {
@@ -124,6 +146,13 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     setVelocity([dx * power * 6, Math.max(2, dy * power * 4), dz * power * 6]);
     setLastHitTime(Date.now());
   }, [playerHit]);
+
+  // Keep aligned to idle anchor when provided
+  useEffect(() => {
+    if (!isInPlay && idleAnchor) {
+      setPosition([idleAnchor[0] + 0.4, 0.9, idleAnchor[2]]);
+    }
+  }, [idleAnchor, isInPlay]);
 
   // Enhanced launch mechanics with power system
   useEffect(() => {

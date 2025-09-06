@@ -490,13 +490,15 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         }
       }
 
-      // AI follows shuttlecock horizontally
+      // AI follows shuttlecock horizontally (stay on its half)
       if (isAI && followTarget) {
         const [tx, , tz] = followTarget;
         const speed = 0.08;
         const nx = playerPos[0] + Math.sign(tx - playerPos[0]) * speed;
         const nz = playerPos[2] + Math.sign(tz - playerPos[2]) * speed;
-        setPlayerPos([Math.max(-7, Math.min(7, nx)), playerPos[1], Math.max(-5, Math.min(5, nz))]);
+        const rightSide = position[0] > 0;
+        const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+        setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
         setFacingDirection(tx > playerPos[0] ? 1 : -1);
       }
 
@@ -534,24 +536,25 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
           });
         });
       };
+      const rightSide = position[0] > 0;
       switch (event.key.toLowerCase()) {
         case 'w':
-          setPlayerPos(prev => [prev[0], prev[1], Math.max(-5, prev[2] - moveSpeed)]);
+          setPlayerPos(prev => [prev[0], prev[1], Math.max(-2.8, prev[2] - moveSpeed)]);
           setIsMoving(true);
           pushMove();
           break;
         case 's':
-          setPlayerPos(prev => [prev[0], prev[1], Math.min(5, prev[2] + moveSpeed)]);
+          setPlayerPos(prev => [prev[0], prev[1], Math.min(2.8, prev[2] + moveSpeed)]);
           setIsMoving(true);
           pushMove();
           break;
         case 'a':
-          setPlayerPos(prev => [Math.max(-7, prev[0] - moveSpeed), prev[1], prev[2]]);
+          setPlayerPos(prev => [rightSide ? Math.max(0.6, prev[0] - moveSpeed) : Math.max(-7, Math.min(-0.6, prev[0] - moveSpeed)), prev[1], prev[2]]);
           setIsMoving(true);
           pushMove();
           break;
         case 'd':
-          setPlayerPos(prev => [Math.min(7, prev[0] + moveSpeed), prev[1], prev[2]]);
+          setPlayerPos(prev => [rightSide ? Math.min(7, prev[0] + moveSpeed) : Math.min(-0.6, prev[0] + moveSpeed), prev[1], prev[2]]);
           setIsMoving(true);
           pushMove();
           break;
@@ -1563,10 +1566,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         return (
           <>
             {/* Players face each other across the net with realistic spacing (left-right) */}
-            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} onPositionChange={setPlayerBadPos} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused} isAI followTarget={shuttlePos} />
+            <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} onPlayerHit={(dir,power)=>setPlayerShot({dir: dir as [number,number,number], power})} onPositionChange={setPlayerBadPos} />
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} />
             {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} idleAnchor={playerBadPos} />
+            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={setShuttlePos} playerHit={playerShot} idleAnchor={playerBadPos} />
           </>
         );
       case 'racing':
