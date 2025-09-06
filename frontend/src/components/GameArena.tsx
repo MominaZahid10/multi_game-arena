@@ -907,10 +907,16 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
 
       setVelocity(newVelocity);
 
-      // Update position based on velocity and steering (freeze movement until raceRunning)
-      const moveVel = raceRunning ? newVelocity : 0;
-      const newX = carPosition[0] + Math.sin(steering) * moveVel * delta;
-      const newZ = carPosition[2] - Math.cos(steering) * moveVel * delta;
+      // Smooth steering toward input to simulate grip and tire limits
+      const steerRate = 2.2; // rad/s
+      const maxSteer = 0.6; // rad
+      const nextSteering = THREE.MathUtils.clamp(steering + steerRate * steerInput * delta, -maxSteer, maxSteer);
+      setSteering(nextSteering);
+
+      const grip = 1 - Math.min(0.6, Math.abs(nextSteering) * 0.6);
+      const moveVel = raceRunning ? newVelocity * grip : 0;
+      const newX = carPosition[0] + Math.sin(nextSteering) * moveVel * delta;
+      const newZ = carPosition[2] - Math.cos(nextSteering) * moveVel * delta;
 
       // Keep car on track
       const clampedX = Math.max(-6, Math.min(6, newX));
