@@ -480,7 +480,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number)=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
