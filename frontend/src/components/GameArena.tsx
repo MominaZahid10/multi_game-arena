@@ -32,6 +32,9 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const inputRef = useRef<{x:number,z:number}>({x:0,z:0});
   const groundedRef = useRef<boolean>(true);
 
+  // Keep internal position in sync with external prop (e.g., knockback)
+  useEffect(() => { setPosition2D(position); }, [position]);
+
   useEffect(() => { onPositionChange?.(position2D); }, [position2D, onPositionChange]);
 
   // Physics integration for movement and gravity
