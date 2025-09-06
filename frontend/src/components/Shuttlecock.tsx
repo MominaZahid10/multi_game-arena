@@ -123,38 +123,8 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     }
   }, [isInPlay, lastLanding]);
 
-  // Apply AI shot commands
-  useEffect(() => {
-    if (!aiShot) return;
-    if (!isInPlay) {
-      setIsInPlay(true);
-      let vx = 0, vy = 0, vz = 0;
-      switch (aiShot) {
-        case 'smash':
-          vx = (Math.random() - 0.5) * 2;
-          vy = 5;
-          vz = -6;
-          break;
-        case 'drop_shot':
-          vx = (Math.random() - 0.5) * 1.2;
-          vy = 3;
-          vz = -2.5;
-          break;
-        case 'clear':
-          vx = (Math.random() - 0.5) * 1.5;
-          vy = 6;
-          vz = -4;
-          break;
-        case 'net_shot':
-          vx = (Math.random() - 0.5) * 0.8;
-          vy = 2.5;
-          vz = -1.6;
-          break;
-      }
-      setVelocity([vx, vy, vz]);
-      setLastHitTime(Date.now());
-    }
-  }, [aiShot, isInPlay]);
+  // AI shots are triggered via racket collision; ignore aiShot to prevent auto-launches
+  useEffect(() => {}, [aiShot, isInPlay]);
 
   // Apply player hit impulses
   useEffect(() => {
