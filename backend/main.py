@@ -10,6 +10,9 @@ from datetime import datetime
 from backend.services.rulebased_ai import RuleBasedAIOpponent
 import random
 import time
+from fastapi import Request
+import pprint
+from pydantic import ValidationError
 
 from backend.config import settings
 from backend.databaseconn import get_db,engine,Base
@@ -110,32 +113,72 @@ async def root():
 
     }
 
+
 @app.post("/api/v1/player/analyze-universal")
 async def analyze_universal_player(
-    request: UniversalAnalysisRequest,
+    raw_request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    DAY 1 DELIVERABLE: Universal Player Analysis Endpoint
-    Analyze player behavior across Fighting, Badminton, and Car Racing games
+    🔥 FIXED: Universal Player Analysis Endpoint
+    Handles validation errors and ML pipeline issues
     """
     try:
+        # Step 1: Log the raw request body
+        body = await raw_request.json()
+        print("\n=== 📨 Incoming Raw Body ===")
+        print(f"Request keys: {list(body.keys())}")
+        
+        # Log action counts for debugging
+        if 'fighting_actions' in body:
+            print(f"Fighting actions: {len(body['fighting_actions'])}")
+        if 'badminton_actions' in body:
+            print(f"Badminton actions: {len(body['badminton_actions'])}")
+            # Log first badminton action for debugging
+            if body['badminton_actions']:
+                first_action = body['badminton_actions'][0]
+                print(f"First badminton context: {first_action.get('context', {})}")
+        if 'racing_actions' in body:
+            print(f"Racing actions: {len(body['racing_actions'])}")
+
+        # 🔥 FIX 1: Better error handling for validation
+        try:
+            request = UniversalAnalysisRequest(**body)
+            print("✅ Pydantic validation successful")
+        except ValidationError as ve:
+            print(f"❌ Pydantic validation failed:")
+            for error in ve.errors():
+                print(f"  - Field: {error['loc']}")
+                print(f"  - Error: {error['msg']}")
+                print(f"  - Input: {error['input']}")
+            
+            # Return detailed validation error
+            return {
+                "error": "Validation failed",
+                "details": ve.errors(),
+                "suggestion": "Check that context fields match expected types (str, float, bool, or Any)"
+            }
+
         # Get or create game session
         session = db.query(GameSession).filter(
             GameSession.session_id == request.session_id
         ).first()
         
         if not session:
+            print(f"🆕 Creating new session: {request.session_id}")
             session = GameSession(
                 session_id=request.session_id,
                 current_game="fighting"
             )
             db.add(session)
+        else:
+            print(f"📂 Found existing session: {request.session_id}")
         
         # Process all actions from all games
         all_actions = []
         games_played = set()
         
+        # Combine actions with better error handling
         for fighting_action in request.fighting_actions:
             all_actions.append(fighting_action)
             games_played.add("fighting")
@@ -148,62 +191,115 @@ async def analyze_universal_player(
             all_actions.append(racing_action)
             games_played.add("racing")
         
-        # Store actions in database
+        print(f"📊 Total actions to analyze: {len(all_actions)} from {len(games_played)} games")
+        
+        # Store actions in database with better error handling
         for action in all_actions:
-            db_action = PlayerAction(
-                session_id=request.session_id,
-                game_type=action.game_type.value,
-                action_type=action.action_type,
-                timestamp=action.timestamp,
-                success=action.success,
-                action_data=action.dict(),
-                context=action.context
-            )
-            db.add(db_action)
+            try:
+                db_action = PlayerAction(
+                    session_id=request.session_id,
+                    game_type=action.game_type.value,
+                    action_type=action.action_type,
+                    timestamp=action.timestamp,
+                    success=action.success,
+                    action_data=action.dict(),
+                    context=action.context  # Now accepts Any type
+                )
+                db.add(db_action)
+            except Exception as action_error:
+                print(f"❌ Failed to store action: {action_error}")
+                continue
         
         # Update session
         session.total_actions += len(all_actions)
         session.games_played = list(games_played)
         
-        # Perform cross-game analysis
-        unified_personality = await multi_game_analyzer.analyze_universal_behavior({
-            "fighting": request.fighting_actions,
-            "badminton": request.badminton_actions,
-            "racing": request.racing_actions
-        })
+        print(f"🧠 Starting cross-game personality analysis...")
         
-        # Get or update personality profile
+        # 🔥 FIX 2 & 3: Better error handling for ML analysis
+        try:
+            # Perform cross-game analysis with fixed ML pipeline
+            unified_personality = await multi_game_analyzer.analyze_universal_behavior({
+                "fighting": request.fighting_actions,
+                "badminton": request.badminton_actions,
+                "racing": request.racing_actions
+            })
+            
+            print(f"✅ Analysis complete: {unified_personality.personality_archetype}")
+            
+        except Exception as analysis_error:
+            print(f"❌ Analysis failed: {analysis_error}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return error but don't crash
+            return {
+                "error": "Analysis failed",
+                "details": str(analysis_error),
+                "fallback": "Using default personality profile"
+            }
+        
+        # Get or update personality profile in database
         personality_db = db.query(PersonalityProfile).filter(
             PersonalityProfile.session_id == request.session_id
         ).first()
         
         if not personality_db:
+            print(f"🆕 Creating new personality profile")
             personality_db = PersonalityProfile(session_id=request.session_id)
             db.add(personality_db)
+        else:
+            print(f"📝 Updating existing personality profile")
         
-        # Update personality traits
-        personality_db.aggression_level = unified_personality.aggression_level
-        personality_db.risk_tolerance = unified_personality.risk_tolerance
-        personality_db.analytical_thinking = unified_personality.analytical_thinking
-        personality_db.patience_level = unified_personality.patience_level
-        personality_db.precision_focus = unified_personality.precision_focus
-        personality_db.competitive_drive = unified_personality.competitive_drive
-        personality_db.strategic_thinking = unified_personality.strategic_thinking
+        # Update personality traits with null checks
+        personality_db.aggression_level = getattr(unified_personality, 'aggression_level', 0.5)
+        personality_db.risk_tolerance = getattr(unified_personality, 'risk_tolerance', 0.5)
+        personality_db.analytical_thinking = getattr(unified_personality, 'analytical_thinking', 0.5)
+        personality_db.patience_level = getattr(unified_personality, 'patience_level', 0.5)
+        personality_db.precision_focus = getattr(unified_personality, 'precision_focus', 0.5)
+        personality_db.competitive_drive = getattr(unified_personality, 'competitive_drive', 0.5)
+        personality_db.strategic_thinking = getattr(unified_personality, 'strategic_thinking', 0.5)
         personality_db.total_actions_analyzed += len(all_actions)
         
-        db.commit()
+        try:
+            db.commit()
+            print(f"💾 Database updated successfully")
+        except Exception as db_error:
+            print(f"❌ Database commit failed: {db_error}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         
-        return {
-            "unified_personality": unified_personality.dict(),
-            "cross_game_insights": multi_game_analyzer.get_cross_game_insights(),
-            "session_stats": {
-                "total_actions": session.total_actions,
-                "games_played": session.games_played,
-                "session_id": session.session_id
+        # Build response with better error handling
+        try:
+            response_data = {
+                "unified_personality": unified_personality.dict(),
+                "cross_game_insights": multi_game_analyzer.get_cross_game_insights(),
+                "session_stats": {
+                    "total_actions": session.total_actions,
+                    "games_played": session.games_played,
+                    "session_id": session.session_id
+                },
+                "analysis_metadata": {
+                    "ml_system_active": multi_game_analyzer.hybrid_system is not None and multi_game_analyzer.hybrid_system.is_trained,
+                    "actions_analyzed": len(all_actions),
+                    "games_included": list(games_played)
+                }
             }
-        }
+            
+            print(f"✅ Returning successful analysis response")
+            return response_data
+            
+        except Exception as response_error:
+            print(f"❌ Response building failed: {response_error}")
+            raise HTTPException(status_code=500, detail=f"Response error: {str(response_error)}")
         
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
+        print(f"\n❌ CRITICAL ERROR in analyze-universal: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 

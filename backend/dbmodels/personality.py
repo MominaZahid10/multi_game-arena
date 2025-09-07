@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict, Union, Any
 from enum import Enum
 from datetime import datetime
 
@@ -13,7 +13,7 @@ class UniversalAction(BaseModel):
     action_type: str
     timestamp: float
     success: bool
-    context: Dict[str, Union[str, float, bool]] = {}
+    context: Dict[str, Any] = {}
 
 class FightingAction(UniversalAction):
     move_type: str = Field(..., description="attack, block, move")
@@ -48,6 +48,10 @@ class UnifiedPersonality(BaseModel):
     total_actions_analyzed: int = 0
     games_played: List[str] = []
     last_updated: Optional[datetime] = None
+    
+    personality_archetype: Optional[str] = "🎮 Multi-Game Player"
+    playstyle_category: Optional[str] = "🎯 Adaptive Gamer" 
+    category_confidence: Optional[float] = 0.0
 
 class BehavioralFeature(BaseModel):
     name: str

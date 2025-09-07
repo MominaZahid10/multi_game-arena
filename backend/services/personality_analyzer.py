@@ -7,119 +7,159 @@ from datetime import datetime
 import os
 import pickle
 
-# Updated import - matches your notebook class name
 try:
-    # Import the actual class from your notebook
-    # You'll need to convert your notebook to a .py file or import it differently
+  
     import sys
-    sys.path.append('.')  # Add current directory to path
+    sys.path.append('.')  
     from backend.services.model1 import CrossGamePersonalityClassifier
-    HybridPersonalitySystem = CrossGamePersonalityClassifier  # Use your actual class
+    HybridPersonalitySystem = CrossGamePersonalityClassifier  
 except ImportError:
     print("❌ CrossGamePersonalityClassifier not found, using fallback")
     HybridPersonalitySystem = None
 
 class MultiGameAnalyzer:
-    """
-    CORRECTED: Integrates with your CrossGamePersonalityClassifier
-    Cross-domain behavioral analysis with both precise scores AND impressive categories
-    """
-    
     def __init__(self):
         self.fighting_analyzer = FightingBehaviorAnalyzer()
         self.badminton_analyzer = BadmintonBehaviorAnalyzer()
         self.racing_analyzer = RacingBehaviorAnalyzer()
         
-        # Load your actual hybrid ML system
         self.hybrid_system = None
-        if HybridPersonalitySystem:
-            self.hybrid_system = HybridPersonalitySystem()
+        if CrossGamePersonalityClassifier:
+            self.hybrid_system = CrossGamePersonalityClassifier()
             self._load_trained_models()
     
     def _load_trained_models(self):
-        """Load pre-trained hybrid ML models"""
-        model_path = "improved_hybrid_personality_system.pkl"
+        """🔥 FIX 2: Force retraining to fix feature mismatch"""
+        model_path = "hybrid_personality_system.pkl"
+        
+        force_retrain = False
         
         if os.path.exists(model_path):
             try:
+                # Try to load and validate the model
                 success = self.hybrid_system.load_models(model_path)
                 if success:
-                    print("✅ Loaded pre-trained hybrid personality models")
+                    # Test the model with sample data to check feature count
+                    try:
+                        test_features = {
+                            'fighting': [0.5, 0.5, 0.5, 0.5],
+                            'badminton': [0.5, 0.5, 0.5, 0.5],
+                            'racing': [0.5, 0.5, 0.5, 0.5]
+                        }
+                        # This will fail if feature count is wrong
+                        _ = self.hybrid_system.predict_personality(test_features)
+                        print("✅ Loaded existing hybrid personality models successfully")
+                        return
+                    except Exception as feature_error:
+                        print(f"🔧 Feature mismatch detected: {feature_error}")
+                        print("📚 This usually means the model was trained with different features")
+                        force_retrain = True
                 else:
-                    print("🔄 Model loading failed, training new models...")
-                    self._train_new_models()
+                    force_retrain = True
             except Exception as e:
                 print(f"❌ Failed to load hybrid models: {e}")
-                print("🔄 Training new hybrid models...")
-                self._train_new_models()
+                force_retrain = True
         else:
-            print("🔄 No pre-trained hybrid models found. Training new models...")
+            print("🆕 No pre-trained hybrid models found.")
+            force_retrain = True
+        
+        if force_retrain:
+            print("🔄 Training new hybrid models with correct feature engineering...")
             self._train_new_models()
     
     def _train_new_models(self):
-        """Train new hybrid ML models if none exist"""
+        """Train new hybrid ML models with correct feature engineering"""
         if not self.hybrid_system:
             print("❌ CrossGamePersonalityClassifier not available")
             return
             
         try:
+            print("🏗️ Generating fresh training data...")
             # Generate training data using your model's method
-            training_data = self.hybrid_system.generate_training_data(n_samples=4000)
+            training_data = self.hybrid_system.generate_training_data(n_samples=5000)
             
+            print("🤖 Training hybrid models...")
             # Train models using your model's method
             performance = self.hybrid_system.train_models(training_data)
             
+            print("💾 Saving trained models...")
             # Save models using your model's method
             self.hybrid_system.save_models("hybrid_personality_system.pkl")
             
-            print(f"✅ New hybrid models trained and saved")
-            print(f"  - Regression R²: {performance['regression_scores']['unified_r2']:.3f}")
-            print(f"  - Classification Accuracy: {performance['classification_scores']['personality_accuracy']:.3f}")
+            print(f"✅ New hybrid models trained and saved successfully!")
+            print(f"  📊 Regression R²: {performance['regression_scores']['unified_r2']:.3f}")
+            print(f"  🎯 Classification Accuracy: {performance['classification_scores']['personality_accuracy']:.3f}")
+            print(f"  📈 Min Category Accuracy: {performance['classification_scores']['min_category_accuracy']:.3f}")
+            
+            # Test the newly trained model
+            try:
+                test_features = {
+                    'fighting': [0.8, 0.2, 0.6, 0.3],
+                    'badminton': [0.7, 0.8, 0.5, 0.4],
+                    'racing': [0.9, 0.7, 0.8, 0.6]
+                }
+                test_prediction = self.hybrid_system.predict_personality(test_features)
+                print(f"🧪 Model test successful - Features used: {test_prediction.get('ultimate_features_used', 'N/A')}")
+            except Exception as test_error:
+                print(f"⚠️ Model test failed: {test_error}")
             
         except Exception as e:
             print(f"❌ Hybrid model training failed: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback to rule-based analysis
             self.hybrid_system = None
     
     async def analyze_universal_behavior(self, actions: Dict[str, List]):
-        """Main cross-game analysis method - corrected for your model"""
+        """Updated main analysis method with better error handling"""
         
         # Extract behavioral features using existing analyzers
         all_features = []
         game_ml_features = {}
         
+        print(f"🔍 Analyzing actions from {len(actions)} games...")
+        
         # Fighting game analysis
         if actions.get("fighting"):
-            fighting_features = await self.fighting_analyzer.extract_features(actions["fighting"])
-            all_features.extend(fighting_features)
-            
-            # Extract ML features for fighting (matching your model's expectations)
-            game_ml_features['fighting'] = self._extract_ml_features_fighting(actions["fighting"])
-            
+            print(f"⚔️ Processing {len(actions['fighting'])} fighting actions...")
+            try:
+                fighting_features = await self.fighting_analyzer.extract_features(actions["fighting"])
+                all_features.extend(fighting_features)
+                game_ml_features['fighting'] = self._extract_ml_features_fighting(actions["fighting"])
+                print(f"✅ Fighting features: {game_ml_features['fighting']}")
+            except Exception as e:
+                print(f"❌ Fighting analysis failed: {e}")
+                
         # Badminton game analysis  
         if actions.get("badminton"):
-            badminton_features = await self.badminton_analyzer.extract_features(actions["badminton"])
-            all_features.extend(badminton_features)
-            
-            # Extract ML features for badminton
-            game_ml_features['badminton'] = self._extract_ml_features_badminton(actions["badminton"])
-            
+            print(f"🏸 Processing {len(actions['badminton'])} badminton actions...")
+            try:
+                badminton_features = await self.badminton_analyzer.extract_features(actions["badminton"])
+                all_features.extend(badminton_features)
+                game_ml_features['badminton'] = self._extract_ml_features_badminton(actions["badminton"])
+                print(f"✅ Badminton features: {game_ml_features['badminton']}")
+            except Exception as e:
+                print(f"❌ Badminton analysis failed: {e}")
+                
         # Racing game analysis
         if actions.get("racing"):
-            racing_features = await self.racing_analyzer.extract_features(actions["racing"])
-            all_features.extend(racing_features)
-            
-            # Extract ML features for racing
-            game_ml_features['racing'] = self._extract_ml_features_racing(actions["racing"])
+            print(f"🏎️ Processing {len(actions['racing'])} racing actions...")
+            try:
+                racing_features = await self.racing_analyzer.extract_features(actions["racing"])
+                all_features.extend(racing_features)
+                game_ml_features['racing'] = self._extract_ml_features_racing(actions["racing"])
+                print(f"✅ Racing features: {game_ml_features['racing']}")
+            except Exception as e:
+                print(f"❌ Racing analysis failed: {e}")
         
         # Use hybrid ML system for personality prediction if available
         if self.hybrid_system and self.hybrid_system.is_trained and game_ml_features:
             try:
+                print(f"🤖 Using hybrid ML prediction with {len(game_ml_features)} games...")
                 # Get hybrid prediction using your model's predict_personality method
                 hybrid_prediction = self.hybrid_system.predict_personality(game_ml_features)
                 
                 # Convert hybrid prediction to UnifiedPersonality format
-                # Your model returns personality_scores as a dict
                 personality_scores = hybrid_prediction['personality_scores']
                 
                 unified_profile = UnifiedPersonality(
@@ -131,32 +171,32 @@ class MultiGameAnalyzer:
                     competitive_drive=personality_scores['competitive_drive'],
                     strategic_thinking=personality_scores['strategic_thinking'],
                     adaptability=np.mean([personality_scores['strategic_thinking'], 
-                                        personality_scores['analytical_thinking']]),  # Derived
+                                        personality_scores['analytical_thinking']]),
                     confidence_score=hybrid_prediction['confidence_score'],
                     total_actions_analyzed=sum(len(actions[game]) for game in actions),
                     games_played=hybrid_prediction['games_analyzed'],
-                    last_updated=datetime.now()
+                    last_updated=datetime.now(),
+                    # 🔥 FIX 3: Set the missing fields
+                    personality_archetype=hybrid_prediction.get('personality_archetype', '🎮 Multi-Game Player'),
+                    playstyle_category=hybrid_prediction.get('playstyle_category', '🎯 Adaptive Gamer'),
+                    category_confidence=hybrid_prediction.get('category_confidence', 0.0)
                 )
                 
-                # Store impressive categories for display (using your model's categories)
-                unified_profile.personality_archetype = hybrid_prediction.get('personality_archetype', '🎮 Multi-Game Player')
-                unified_profile.playstyle_category = hybrid_prediction.get('playstyle_category', '🎯 Adaptive Gamer')
-                unified_profile.category_confidence = hybrid_prediction.get('category_confidence', 0.0)
-                
-                print(f"✅ Hybrid ML personality analysis complete")
-                print(f"  Type: {hybrid_prediction.get('personality_archetype', 'Unknown')}")
-                print(f"  Playstyle: {hybrid_prediction.get('playstyle_category', 'Unknown')}")
-                print(f"  Confidence: {hybrid_prediction['confidence_score']:.3f}")
-                print(f"  Consistency: {hybrid_prediction.get('cross_game_consistency', 0.0):.3f}")
+                print(f"✅ Hybrid ML personality analysis complete!")
+                print(f"  🏷️ Type: {unified_profile.personality_archetype}")
+                print(f"  🎮 Style: {unified_profile.playstyle_category}")
+                print(f"  📊 Confidence: {unified_profile.confidence_score:.3f}")
+                print(f"  🔄 Consistency: {hybrid_prediction.get('cross_game_consistency', 0.0):.3f}")
                 
                 return unified_profile
                 
             except Exception as e:
-                print(f"❌ Hybrid ML prediction failed, falling back to rule-based: {e}")
+                print(f"❌ Hybrid ML prediction failed, using rule-based fallback: {e}")
                 import traceback
                 traceback.print_exc()
         
         # Fallback to rule-based analysis
+        print(f"📋 Using rule-based analysis fallback...")
         personality_synthesizer = PersonalitySynthesizer()
         unified_profile = await personality_synthesizer.synthesize(all_features)
         
@@ -165,6 +205,7 @@ class MultiGameAnalyzer:
         unified_profile.playstyle_category = "📊 Rule-Based Analysis"
         unified_profile.category_confidence = unified_profile.confidence_score
         
+        print(f"✅ Rule-based analysis complete")
         return unified_profile
     
     def _extract_ml_features_fighting(self, actions: List[Any]) -> List[float]:
