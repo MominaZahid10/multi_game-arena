@@ -1907,10 +1907,20 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             <RigidBody type="fixed">
               <CuboidCollider args={[60, 0.1, 60]} position={[0, -1.9, 0]} />
             </RigidBody>
-            {/* Existing visual players and shuttle remain for now */}
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
             <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI aiOrder={aiBadmintonOrder} />
             <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} autoReturn={false} />
+            <BadmintonAIController
+              sessionId={sessionRef.current}
+              enabled={wsEnabled}
+              gameState={{
+                score: badmintonScore,
+                player: { pos: playerBadPos },
+                ai: { pos: aiCar1Pos },
+                shuttle: { pos: shuttlePos, vel: shuttleVel },
+              }}
+              onAIMove={(order) => setAiBadmintonOrder(order)}
+            />
           </Physics>
         );
       case 'racing':
