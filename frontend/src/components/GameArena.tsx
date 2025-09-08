@@ -269,6 +269,10 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isAttacking) return;
+      const k = event.key.toLowerCase();
+      if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === ' ' || k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') {
+        event.preventDefault();
+      }
 
       const pushMove = () => {
         import('@/lib/analytics').then(({ addAction }) => {
