@@ -275,20 +275,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       }
 
       const pushMove = () => {
-        import('@/lib/analytics').then(({ addAction }) => {
-          const x = position2D[0];
-          const dist = Math.abs(x - (-x));
-          addAction({
-            game_type: 'fighting',
-            action_type: 'move',
-            timestamp: Date.now(),
-            success: true,
-            move_type: 'move',
-            position: [position2D[0], position2D[2] || 0],
-            combo_count: 0,
-            context: { player_health: 100, ai_health: 100, distance_to_opponent: dist },
-          });
-        });
+        // Disable high-frequency move analytics to prevent lag
       };
 
       switch (event.key.toLowerCase()) {
@@ -1970,9 +1957,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         >
           <CameraController gameType={gameType} playerCarPos={playerCarPos} />
           <OrbitControls
-            enabled={gameType !== 'racing'}
+            enabled={gameType === 'racing'}
             enablePan={false}
-            enableZoom={gameType !== 'racing'}
+            enableZoom={gameType === 'racing'}
             minDistance={gameType === 'racing' ? 6 : 4}
             maxDistance={gameType === 'racing' ? 15 : 12}
             minPolarAngle={Math.PI / 12}
