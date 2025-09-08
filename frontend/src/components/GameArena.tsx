@@ -1372,31 +1372,31 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           </Box>
 
           {/* Reflective center line */}
-          {Array.from({ length: 200 }, (_, i) => (
-            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+          {Array.from({ length: 100 }, (_, i) => (
+            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
               <meshBasicMaterial color="#FFD700" />
             </Box>
           ))}
 
           {/* Reflective lane dividers */}
-          {Array.from({ length: 200 }, (_, i) => (
+          {Array.from({ length: 100 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
-              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
             </React.Fragment>
           ))}
 
           {/* Illuminated track barriers */}
-          {Array.from({ length: 50 }, (_, i) => (
+          {Array.from({ length: 24 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.5, 1, 3]} position={[-9, -1, -147 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[-9, -1, -144 + i * 12]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
-              <Box args={[0.5, 1, 3]} position={[9, -1, -147 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[9, -1, -144 + i * 12]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
             </React.Fragment>
@@ -1481,15 +1481,8 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {/* Main arena lighting */}
       <directionalLight
         position={[15, 12, 8]}
-        intensity={gameType === 'racing' ? 0.8 : gameType === 'badminton' ? 2.0 : 1.5}
+        intensity={gameType === 'racing' ? 0.6 : gameType === 'badminton' ? 1.2 : 1.0}
         color={gameType === 'fighting' ? "#4ECDC4" : gameType === 'badminton' ? "#FFFFFF" : "#FFFFCC"}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={50}
-        shadow-camera-left={-15}
-        shadow-camera-right={15}
-        shadow-camera-top={15}
-        shadow-camera-bottom={-15}
       />
 
       {/* Accent lighting */}
@@ -1502,11 +1495,10 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {/* Central spotlight */}
       <spotLight
         position={[0, 15, 0]}
-        intensity={gameType === 'racing' ? 2.0 : gameType === 'badminton' ? 1.5 : 1.2}
+        intensity={gameType === 'racing' ? 1.4 : gameType === 'badminton' ? 1.1 : 0.9}
         angle={Math.PI / 4}
         penumbra={0.3}
         color={gameType === 'racing' ? "#FFFFCC" : "#FFFFFF"}
-        castShadow
       />
 
       {/* Stadium lighting for badminton */}
@@ -1916,15 +1908,16 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       {/* Game Arena */}
       <div className="absolute inset-0">
         <Canvas
+          dpr={[1, 1.5]}
           camera={{
             position: [6, 2, 6],
             fov: gameType === 'racing' ? 60 : 75,
             near: 0.1,
             far: 1000
           }}
-          shadows
+          shadows={false}
           gl={{
-            antialias: true,
+            antialias: false,
             alpha: false,
             powerPreference: "high-performance"
           }}
@@ -1969,7 +1962,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         </div>
 
         {/* Top HUD */}
-        <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-auto">
+        <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-auto z-50">
           {/* Game Switcher */}
           <div className="flex gap-2">
             {(['fighting', 'badminton', 'racing'] as const).map((game) => (
@@ -2002,7 +1995,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
                   setPaused(p => !p);
                 }
               }}
-              className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
+              className="hud-element px-3 py-2 rounded-lg text-xs font-medium pointer-events-auto"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -2012,7 +2005,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             {/* Analytics Button */}
             <motion.button
               onClick={onToggleAnalytics}
-              className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
+              className="hud-element px-3 py-2 rounded-lg text-xs font-medium pointer-events-auto"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
