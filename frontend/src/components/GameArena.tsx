@@ -1908,7 +1908,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             </RigidBody>
             {/* Existing visual players and shuttle remain for now */}
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} followVel={shuttleVel} />
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI aiOrder={aiBadmintonOrder} />
             <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} />
           </Physics>
         );
