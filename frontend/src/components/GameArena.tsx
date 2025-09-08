@@ -1880,7 +1880,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         {/* Top Score Bar */}
         <div className="absolute top-4 left-0 right-0 flex justify-center">
           {gameType === 'fighting' && (
-            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={[0, 0]} />
+            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={fightingRounds} />
           )}
           {gameType === 'badminton' && (
             <ScoreBar game="badminton" score={[0, 0]} />
