@@ -1883,7 +1883,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={fightingRounds} />
           )}
           {gameType === 'badminton' && (
-            <ScoreBar game="badminton" score={[0, 0]} />
+            <ScoreBar game="badminton" score={badmintonScore} />
           )}
           {gameType === 'racing' && (
             <ScoreBar game="racing" lap={1} totalLaps={3} position={1} totalRacers={6} />
