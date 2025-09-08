@@ -1903,13 +1903,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     switch (gameType) {
       case 'fighting':
         return (
-          <Physics gravity={[0, -9.81, 0]}>
-            <RigidBody type="fixed">
-              <CuboidCollider args={[60, 0.1, 60]} position={[0, -1.9, 0]} />
-            </RigidBody>
-            <Player position={[-4.5, 0.9, 0]} moveDirection={moveDir} jump={jumpFlag} action={gameStarted ? (moveDir.x !== 0 || moveDir.z !== 0 ? 'run' : 'idle') : 'idle'} color="#22D3EE" />
-            <Player position={[4.5, 0.9, 0]} moveDirection={{ x: 0, z: 0 }} action={'idle'} color="#F97316" />
-          </Physics>
+          <>
+            <FighterCharacter position={playerPosF} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} opponentPosition={aiPosF} onPositionChange={setPlayerPosF} />
+            <FighterCharacter position={aiPosF} color="#FF4455" initialFacing={-1} engaged={gameStarted} paused={paused} opponentPosition={playerPosF} onPositionChange={setAiPosF} aiCommand={aiFightCmd} />
+          </>
         );
       case 'badminton':
         return (
