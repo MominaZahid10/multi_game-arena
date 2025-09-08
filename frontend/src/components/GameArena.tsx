@@ -403,7 +403,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
           break;
         case ' ':
           if (!isAttacking && !isBlocking && groundedRef.current) {
-            const v0 = 4.9; // initial jump velocity to reach ~1.2m
+            const v0 = 7.2; // stronger jump impulse for ~2m arc
             velRef.current.y = v0;
             groundedRef.current = false;
           }
