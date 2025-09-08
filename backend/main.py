@@ -113,7 +113,6 @@ async def root():
 
     }
 
-
 @app.post("/api/v1/player/analyze-universal")
 async def analyze_universal_player(
     raw_request: Request,
@@ -134,14 +133,12 @@ async def analyze_universal_player(
             print(f"Fighting actions: {len(body['fighting_actions'])}")
         if 'badminton_actions' in body:
             print(f"Badminton actions: {len(body['badminton_actions'])}")
-            # Log first badminton action for debugging
             if body['badminton_actions']:
                 first_action = body['badminton_actions'][0]
                 print(f"First badminton context: {first_action.get('context', {})}")
         if 'racing_actions' in body:
             print(f"Racing actions: {len(body['racing_actions'])}")
 
-        # 🔥 FIX 1: Better error handling for validation
         try:
             request = UniversalAnalysisRequest(**body)
             print("✅ Pydantic validation successful")
@@ -151,8 +148,6 @@ async def analyze_universal_player(
                 print(f"  - Field: {error['loc']}")
                 print(f"  - Error: {error['msg']}")
                 print(f"  - Input: {error['input']}")
-            
-            # Return detailed validation error
             return {
                 "error": "Validation failed",
                 "details": ve.errors(),
@@ -178,15 +173,12 @@ async def analyze_universal_player(
         all_actions = []
         games_played = set()
         
-        # Combine actions with better error handling
         for fighting_action in request.fighting_actions:
             all_actions.append(fighting_action)
             games_played.add("fighting")
-            
         for badminton_action in request.badminton_actions:
             all_actions.append(badminton_action)
             games_played.add("badminton")
-            
         for racing_action in request.racing_actions:
             all_actions.append(racing_action)
             games_played.add("racing")
@@ -203,36 +195,33 @@ async def analyze_universal_player(
                     timestamp=action.timestamp,
                     success=action.success,
                     action_data=action.dict(),
-                    context=action.context  # Now accepts Any type
+                    context=action.context
                 )
                 db.add(db_action)
             except Exception as action_error:
                 print(f"❌ Failed to store action: {action_error}")
                 continue
         
-        # Update session
+        # ------- FIX: Safely handle None for session.total_actions -------
+        if session.total_actions is None:
+            session.total_actions = 0
         session.total_actions += len(all_actions)
         session.games_played = list(games_played)
-        
+        # ---------------------------------------------------------------
+
         print(f"🧠 Starting cross-game personality analysis...")
         
-        # 🔥 FIX 2 & 3: Better error handling for ML analysis
         try:
-            # Perform cross-game analysis with fixed ML pipeline
             unified_personality = await multi_game_analyzer.analyze_universal_behavior({
                 "fighting": request.fighting_actions,
                 "badminton": request.badminton_actions,
                 "racing": request.racing_actions
             })
-            
             print(f"✅ Analysis complete: {unified_personality.personality_archetype}")
-            
         except Exception as analysis_error:
             print(f"❌ Analysis failed: {analysis_error}")
             import traceback
             traceback.print_exc()
-            
-            # Return error but don't crash
             return {
                 "error": "Analysis failed",
                 "details": str(analysis_error),
@@ -250,8 +239,7 @@ async def analyze_universal_player(
             db.add(personality_db)
         else:
             print(f"📝 Updating existing personality profile")
-        
-        # Update personality traits with null checks
+
         personality_db.aggression_level = getattr(unified_personality, 'aggression_level', 0.5)
         personality_db.risk_tolerance = getattr(unified_personality, 'risk_tolerance', 0.5)
         personality_db.analytical_thinking = getattr(unified_personality, 'analytical_thinking', 0.5)
@@ -259,8 +247,13 @@ async def analyze_universal_player(
         personality_db.precision_focus = getattr(unified_personality, 'precision_focus', 0.5)
         personality_db.competitive_drive = getattr(unified_personality, 'competitive_drive', 0.5)
         personality_db.strategic_thinking = getattr(unified_personality, 'strategic_thinking', 0.5)
+
+        # ------- FIX: Safely handle None for personality_db.total_actions_analyzed -------
+        if personality_db.total_actions_analyzed is None:
+            personality_db.total_actions_analyzed = 0
         personality_db.total_actions_analyzed += len(all_actions)
-        
+        # -------------------------------------------------------------------------------
+
         try:
             db.commit()
             print(f"💾 Database updated successfully")
@@ -269,7 +262,6 @@ async def analyze_universal_player(
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         
-        # Build response with better error handling
         try:
             response_data = {
                 "unified_personality": unified_personality.dict(),
@@ -285,16 +277,13 @@ async def analyze_universal_player(
                     "games_included": list(games_played)
                 }
             }
-            
             print(f"✅ Returning successful analysis response")
             return response_data
-            
         except Exception as response_error:
             print(f"❌ Response building failed: {response_error}")
             raise HTTPException(status_code=500, detail=f"Response error: {str(response_error)}")
         
     except HTTPException:
-        # Re-raise HTTP exceptions
         raise
     except Exception as e:
         print(f"\n❌ CRITICAL ERROR in analyze-universal: {str(e)}")
