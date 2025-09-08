@@ -1798,6 +1798,84 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     shuttlePrevRef.current = {pos: p, t: now};
     setShuttlePos(p);
   };
+
+  // Badminton rally and scoring tracking
+  useEffect(() => {
+    const prev = shuttlePrevRef.current?.pos;
+    if (prev) {
+      const moved = Math.hypot(
+        shuttlePos[0] - prev[0],
+        shuttlePos[1] - prev[1],
+        shuttlePos[2] - prev[2]
+      );
+      if (moved > 1.0 && shuttlePos[1] > 1.0) setRallyCount((c) => c + 1);
+    }
+
+    const justLanded = shuttlePos[1] <= 0.12 && (prev ? prev[1] > 0.12 : true);
+    if (justLanded) {
+      const landedOnPlayerSide = shuttlePos[0] < 0;
+      const scorer = landedOnPlayerSide ? 'ai' : 'player';
+      const newScore: [number, number] = scorer === 'player'
+        ? [badmintonScore[0] + 1, badmintonScore[1]]
+        : [badmintonScore[0], badmintonScore[1] + 1];
+      setBadmintonScore(newScore);
+      setRallyCount(0);
+      const isGamePoint = Math.max(newScore[0], newScore[1]) >= 20;
+      setGamePoint(isGamePoint ? (scorer as 'player' | 'ai') : null);
+      sendGameAction?.('badminton', {
+        action_type: 'point_scored',
+        scorer,
+        score: newScore,
+        shot_type: 'placement',
+        rally_length: rallyCount,
+        is_game_point: isGamePoint,
+      });
+    }
+  }, [shuttlePos]);
+
+  // Racing progress and position tracking
+  useEffect(() => {
+    const now = performance.now();
+    const lastPos = lastCarPosRef.current;
+    const dt = Math.max(0.001, (now - lastCarTsRef.current) / 1000);
+    const dz = playerCarPos[2] - lastPos[2];
+    const dx = playerCarPos[0] - lastPos[0];
+    const speed = Math.sqrt(dx*dx + dz*dz) / dt;
+    lastCarPosRef.current = playerCarPos;
+    lastCarTsRef.current = now;
+
+    const newDist = Math.max(totalDistance, Math.abs(playerCarPos[2]));
+    if (newDist !== totalDistance) setTotalDistance(newDist);
+
+    const computedLap = Math.min(3, Math.floor(newDist / 100) + 1);
+    if (computedLap !== currentLap) {
+      setCurrentLap(computedLap);
+      setLapTimes((t) => [...t, Date.now()]);
+      sendGameAction?.('racing', {
+        action_type: 'lap_completed',
+        lap_number: computedLap,
+        lap_time: Date.now(),
+        position: racePosition,
+        total_distance: newDist,
+      });
+    }
+
+    const ranking = [
+      { who: 'human', z: playerCarPos[2] },
+      { who: 'ai1', z: aiCar1Pos[2] },
+      { who: 'ai2', z: aiCar2Pos[2] },
+    ].sort((a, b) => a.z - b.z);
+    const newPos = ranking.findIndex((r) => r.who === 'human') + 1;
+    if (newPos !== racePosition) {
+      setRacePosition(newPos);
+      sendGameAction?.('racing', {
+        action_type: 'position_change',
+        new_position: newPos,
+        lap: currentLap,
+        speed,
+      });
+    }
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos]);
   const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
   const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
