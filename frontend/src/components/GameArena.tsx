@@ -1864,6 +1864,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     }
   }, [playerCarPos, aiCar1Pos, aiCar2Pos]);
   const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
+  const [aiBadmintonOrder, setAiBadmintonOrder] = useState<{ target?: [number, number]; swing?: { dir:[number,number,number]; power:number; spin?:[number,number,number] } } | null>(null);
   const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
   // Input state for physics player
