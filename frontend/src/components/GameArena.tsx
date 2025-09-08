@@ -90,6 +90,13 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     nz = Math.max(-4, Math.min(4, nz));
 
     setPosition2D([nx, ny, nz]);
+
+    // Body lean based on velocity for more natural motion
+    if (bodyRef.current) {
+      bodyRef.current.rotation.z = -v.x * 0.06;
+      bodyRef.current.rotation.x = v.z * 0.04;
+    }
+
     setIsWalking(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
   });
 
