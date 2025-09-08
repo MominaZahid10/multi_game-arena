@@ -1615,7 +1615,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [gamePoint, setGamePoint] = useState<'player' | 'ai' | null>(null);
 
   const [currentLap, setCurrentLap] = useState(1);
+  const [racingTotalLaps, setRacingTotalLaps] = useState(3);
   const [racePosition, setRacePosition] = useState(1);
+  const [racingTotalRacers, setRacingTotalRacers] = useState(6);
   const [lapTimes, setLapTimes] = useState<number[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
 
