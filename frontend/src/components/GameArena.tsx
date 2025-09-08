@@ -1873,24 +1873,53 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
   const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
 
+  // Input state for physics player
+  const keysRef = useRef<Record<string, boolean>>({});
+  const [moveDir, setMoveDir] = useState<{ x: number; z: number }>({ x: 0, z: 0 });
+  const [jumpFlag, setJumpFlag] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = true;
+      const x = (keysRef.current["d"] ? 1 : 0) + (keysRef.current["arrowright"] ? 1 : 0) - (keysRef.current["a"] ? 1 : 0) - (keysRef.current["arrowleft"] ? 1 : 0);
+      const z = (keysRef.current["w"] ? -1 : 0) + (keysRef.current["arrowup"] ? -1 : 0) - (keysRef.current["s"] ? 1 : 0) - (keysRef.current["arrowdown"] ? 1 : 0);
+      setMoveDir({ x, z });
+      if (e.key.toLowerCase() === " ".trim() || e.key.toLowerCase() === "space") setJumpFlag(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      delete keysRef.current[e.key.toLowerCase()];
+      const x = (keysRef.current["d"] ? 1 : 0) + (keysRef.current["arrowright"] ? 1 : 0) - (keysRef.current["a"] ? 1 : 0) - (keysRef.current["arrowleft"] ? 1 : 0);
+      const z = (keysRef.current["w"] ? -1 : 0) + (keysRef.current["arrowup"] ? -1 : 0) - (keysRef.current["s"] ? 1 : 0) - (keysRef.current["arrowdown"] ? 1 : 0);
+      setMoveDir({ x, z });
+      if (e.key.toLowerCase() === " ".trim() || e.key.toLowerCase() === "space") setJumpFlag(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
+
   const renderGameContent = () => {
     switch (gameType) {
       case 'fighting':
         return (
-          <>
-            <FighterCharacter position={playerPosF} color="#00B3FF" isPlayer initialFacing={1} engaged={gameStarted} paused={paused} opponentPosition={aiPosF} onPositionChange={setPlayerPosF} />
-            <FighterCharacter position={aiPosF} color="#FF4455" initialFacing={-1} engaged={gameStarted} paused={paused} opponentPosition={playerPosF} onPositionChange={setAiPosF} aiCommand={aiFightCmd} />
-          </>
+          <Physics gravity={[0, -9.81, 0]}>
+            <RigidBody type="fixed">
+              <CuboidCollider args={[60, 0.1, 60]} position={[0, -1.9, 0]} />
+            </RigidBody>
+            <Player position={[-4.5, 0.9, 0]} moveDirection={moveDir} jump={jumpFlag} action={gameStarted ? (moveDir.x !== 0 || moveDir.z !== 0 ? 'run' : 'idle') : 'idle'} color="#22D3EE" />
+            <Player position={[4.5, 0.9, 0]} moveDirection={{ x: 0, z: 0 }} action={'idle'} color="#F97316" />
+          </Physics>
         );
       case 'badminton':
         return (
-          <>
-            {/* Players face each other across the net with realistic spacing (left-right) */}
+          <Physics gravity={[0, -9.81, 0]}>
+            <RigidBody type="fixed">
+              <CuboidCollider args={[60, 0.1, 60]} position={[0, -1.9, 0]} />
+            </RigidBody>
+            {/* Existing visual players and shuttle remain for now */}
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
             <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} followVel={shuttleVel} />
-            {/* Realistic Shuttlecock with physics */}
             <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} />
-          </>
+          </Physics>
         );
       case 'racing':
         return (

@@ -1,109 +1,92 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF, useAnimations } from "@react-three/drei";
-import { useBox } from "@react-three/cannon";
+import { RigidBody, CapsuleCollider } from "@react-three/rapier";
 
 export type PlayerAction = "idle" | "run" | "jump" | "fight";
 
 type PlayerProps = {
-  modelUrl?: string;
   position?: [number, number, number];
   moveDirection?: { x: number; z: number };
   jump?: boolean;
   onLand?: () => void;
   action?: PlayerAction;
+  color?: string;
   leanIntensity?: number; // 0..1
 };
 
 const PLAYER_HEIGHT = 1.8;
-const PLAYER_RADIUS = 0.4;
+const PLAYER_RADIUS = 0.35;
 const JUMP_FORCE = 6;
-const MOVE_SPEED = 4;
+const MOVE_SPEED = 4.5;
 
 export default function Player({
-  modelUrl = "/models/player.glb",
   position = [0, PLAYER_HEIGHT / 2, 0],
   moveDirection = { x: 0, z: 0 },
   jump = false,
   onLand,
   action = "idle",
+  color = "#22D3EE",
   leanIntensity = 1,
 }: PlayerProps) {
-  const group = useRef<THREE.Group>(null);
+  const body = useRef<any>(null);
   const rig = useRef<THREE.Group>(null);
-
-  // Physics body (capsule-like box)
   const [isGrounded, setIsGrounded] = useState(true);
-  const [ref, api] = useBox(() => ({
-    type: "Dynamic",
-    mass: 1,
-    position,
-    args: [PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2],
-    onCollide: (e: any) => {
-      const impact = e?.contact?.impactVelocity ?? 0;
-      if (impact > 0.2) setIsGrounded(true);
-      if (onLand && impact > 2) onLand();
-    },
-  }));
 
-  // Model + animations
-  const { scene, animations } = useGLTF(modelUrl);
-  const { actions } = useAnimations(animations, rig);
-
-  // Animation state machine with blending
+  // Basic animation mimic via lean based on intent
   useEffect(() => {
-    let clip = "Idle";
-    if (action === "jump") clip = "Jump";
-    else if (action === "fight") clip = "Fight";
-    else if (moveDirection.x !== 0 || moveDirection.z !== 0) clip = "Run";
+    if (!rig.current) return;
+    if (action === "fight") rig.current.rotation.y = Math.sin(Date.now() * 0.01) * 0.1;
+    else rig.current.rotation.y = 0;
+  }, [action]);
 
-    Object.entries(actions || {}).forEach(([name, act]) => {
-      if (!act) return;
-      if (name === clip) act.reset().fadeIn(0.2).play();
-      else act.fadeOut(0.2);
-    });
-  }, [action, moveDirection, actions]);
-
-  // Movement + leaning
   useFrame(() => {
-    // Horizontal velocity
-    if (moveDirection.x !== 0 || moveDirection.z !== 0) {
-      api.velocity.set(
-        moveDirection.x * MOVE_SPEED,
-        undefined as unknown as number,
-        moveDirection.z * MOVE_SPEED
-      );
-      if (rig.current) {
-        // Lean body: strafe leans Z, forward/back leans X
-        rig.current.rotation.z = -moveDirection.x * 0.25 * leanIntensity;
-        rig.current.rotation.x = moveDirection.z * 0.12 * leanIntensity;
-      }
-    } else if (rig.current) {
-      rig.current.rotation.z = 0;
-      rig.current.rotation.x = 0;
+    const rb = body.current;
+    if (!rb) return;
+    const lin = rb.linvel();
+    const targetX = moveDirection.x * MOVE_SPEED;
+    const targetZ = moveDirection.z * MOVE_SPEED;
+
+    rb.setLinvel({ x: targetX, y: lin.y, z: targetZ }, true);
+
+    if (rig.current) {
+      rig.current.rotation.z = -moveDirection.x * 0.25 * leanIntensity;
+      rig.current.rotation.x = moveDirection.z * 0.12 * leanIntensity;
     }
 
-    // Jump impulse
     if (jump && isGrounded) {
-      api.velocity.set(
-        undefined as unknown as number,
-        JUMP_FORCE,
-        undefined as unknown as number
-      );
+      rb.setLinvel({ x: lin.x, y: JUMP_FORCE, z: lin.z }, true);
       setIsGrounded(false);
     }
   });
 
   return (
-    <group ref={ref as any}>
-      <group ref={group}>
-        <group ref={rig}>
-          {/* Render full scene to avoid hardcoding node names */}
-          <primitive object={scene} />
-        </group>
+    <RigidBody
+      ref={body}
+      type="dynamic"
+      mass={1}
+      canSleep={false}
+      enabledRotations={[false, true, false]}
+      onCollisionEnter={(e) => {
+        if ((e?.other?.rigidBody?.mass() ?? 0) === 0) setIsGrounded(true);
+        if (onLand) onLand();
+      }}
+    >
+      <CapsuleCollider args={[PLAYER_HEIGHT / 2, PLAYER_RADIUS]} position={[0, PLAYER_HEIGHT / 2, 0]} />
+      <group ref={rig}>
+        {/* Simple capsule visual */}
+        <mesh position={[0, PLAYER_HEIGHT / 2, 0]}>
+          <cylinderGeometry args={[PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_HEIGHT - PLAYER_RADIUS * 2, 12]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+        <mesh position={[0, PLAYER_HEIGHT - PLAYER_RADIUS, 0]}>
+          <sphereGeometry args={[PLAYER_RADIUS, 16, 16]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+        <mesh position={[0, PLAYER_RADIUS, 0]}>
+          <sphereGeometry args={[PLAYER_RADIUS, 16, 16]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
       </group>
-    </group>
+    </RigidBody>
   );
 }
-
-useGLTF.preload("/models/player.glb");
