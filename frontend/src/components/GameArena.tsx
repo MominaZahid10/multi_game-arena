@@ -42,9 +42,9 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   // Physics integration for movement and gravity
   useFrame((state, delta) => {
     if (paused) return;
-    const accel = 10;
-    const maxSpeed = 3.5;
-    const frictionPerFrame = 0.85;
+    const accel = 14;
+    const maxSpeed = 5.5;
+    const frictionPerFrame = 0.88;
     const friction = Math.pow(frictionPerFrame, 60 * delta);
     const v = velRef.current;
     const inp = inputRef.current;
