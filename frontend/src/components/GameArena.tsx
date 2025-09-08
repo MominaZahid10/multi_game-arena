@@ -25,6 +25,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
+  const animTickRef = useRef(0);
   const [isAttacking, setIsAttacking] = useState(false);
   const [isWalking, setIsWalking] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
@@ -102,6 +103,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
   useFrame((state, delta) => {
     if (paused) return;
+    animTickRef.current++;
+    if ((animTickRef.current & 1) === 1) return;
     if (meshRef.current) {
       // Realistic idle animation - breathing and slight movement
       if (!isAttacking && !isWalking) {
@@ -1941,7 +1944,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       {/* Game Arena */}
       <div className="absolute inset-0">
         <Canvas
-          dpr={[1, 1.5]}
+          dpr={[1, 1.25]}
           camera={{
             position: [6, 2, 6],
             fov: gameType === 'racing' ? 60 : 75,
@@ -1957,9 +1960,9 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         >
           <CameraController gameType={gameType} playerCarPos={playerCarPos} />
           <OrbitControls
-            enabled={gameType === 'racing'}
+            enabled={gameType !== 'racing'}
             enablePan={false}
-            enableZoom={gameType === 'racing'}
+            enableZoom={gameType !== 'racing'}
             minDistance={gameType === 'racing' ? 6 : 4}
             maxDistance={gameType === 'racing' ? 15 : 12}
             minPolarAngle={Math.PI / 12}
