@@ -1668,7 +1668,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     const game = msg.game || msg.new_game;
     const action = msg.ai_action || msg.action;
     if (game === 'fighting' && action) setAiFightCmd(action);
-    if (game === 'badminton' && action) setAiBadmintonShot(action);
+    if (game === 'badminton') {
+      // Drive AI via order (target predicted landing)
+      const [sx, sy, sz] = shuttlePos;
+      const [vx, vy, vz] = shuttleVel;
+      const tx: [number, number] = [sx + vx * 0.6, sz + vz * 0.6];
+      setAiBadmintonOrder({ target: tx });
+    }
     if (game === 'racing' && action) setAiRaceCmd(action);
     const t = setTimeout(() => { setAiFightCmd(null); setAiBadmintonShot(null); setAiRaceCmd(null); }, 900);
     return () => clearTimeout(t);
