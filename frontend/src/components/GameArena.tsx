@@ -1755,7 +1755,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       const dist = Math.hypot(dx, dz);
       if (dist < 1.0) {
         const dmg = aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' ? 12 : 8;
-        setPlayerHealth(h => Math.max(0, h - dmg));
+        updatePlayerHealth(dmg, aiFightCmd || 'attack');
         const back = Math.sign(playerPosF[0] - aiPosF[0]) || 1;
         setPlayerPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
       }
