@@ -4,7 +4,7 @@ import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
-const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number; spin?: [number, number, number] } | null; idleAnchor?: [number, number, number] }) => {
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor, autoReturn = false }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number; spin?: [number, number, number] } | null; idleAnchor?: [number, number, number]; autoReturn?: boolean }) => {
   const shuttleRef = useRef<THREE.Group>(null);
   const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
   const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
@@ -112,6 +112,7 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
 
   // If landed on AI side, auto-pick and return after short delay
   useEffect(() => {
+    if (!autoReturn) return;
     if (!isInPlay && lastLanding && lastLanding.pos[0] > 0.6) {
       const t = setTimeout(() => {
         setPosition([lastLanding.pos[0], 0.9, lastLanding.pos[2]]);
@@ -121,7 +122,7 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       }, 700);
       return () => clearTimeout(t);
     }
-  }, [isInPlay, lastLanding]);
+  }, [isInPlay, lastLanding, autoReturn]);
 
   // AI shots are triggered via racket collision; ignore aiShot to prevent auto-launches
   useEffect(() => {}, [aiShot, isInPlay]);
