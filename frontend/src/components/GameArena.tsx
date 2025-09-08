@@ -1608,7 +1608,8 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
 
   // WebSocket & AI mapping
   const [wsEnabled, setWsEnabled] = useState(true);
-  const { connected, lastMessage } = useMultiGameWebSocket('arena-session', wsEnabled);
+  const sessionRef = useRef(`arena-${Date.now()}`);
+  const { connected, lastMessage, sendGameAction, sendGameStateUpdate } = useMultiGameWebSocket(sessionRef.current, wsEnabled);
   const [aiFightCmd, setAiFightCmd] = useState<FightingAI>(null);
   const [aiBadmintonShot, setAiBadmintonShot] = useState<'drop_shot' | 'smash' | 'clear' | 'net_shot' | null>(null);
   const [aiRaceCmd, setAiRaceCmd] = useState<RacingAI>(null);
