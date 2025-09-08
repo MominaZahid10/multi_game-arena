@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Box, Sphere, Plane } from '@react-three/drei';
+import BadmintonAIController from './BadmintonAIController';
+import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
+import Player from './Player';
 import { motion } from 'framer-motion';
 import * as THREE from 'three';
 import Shuttlecock from './Shuttlecock';
@@ -23,6 +26,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
+  const animTickRef = useRef(0);
   const [isAttacking, setIsAttacking] = useState(false);
   const [isWalking, setIsWalking] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
@@ -40,9 +44,9 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
   // Physics integration for movement and gravity
   useFrame((state, delta) => {
     if (paused) return;
-    const accel = 10;
-    const maxSpeed = 3.5;
-    const frictionPerFrame = 0.85;
+    const accel = 14;
+    const maxSpeed = 5.5;
+    const frictionPerFrame = 0.88;
     const friction = Math.pow(frictionPerFrame, 60 * delta);
     const v = velRef.current;
     const inp = inputRef.current;
@@ -88,11 +92,20 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     nz = Math.max(-4, Math.min(4, nz));
 
     setPosition2D([nx, ny, nz]);
+
+    // Body lean based on velocity for more natural motion
+    if (bodyRef.current) {
+      bodyRef.current.rotation.z = -v.x * 0.06;
+      bodyRef.current.rotation.x = v.z * 0.04;
+    }
+
     setIsWalking(Math.abs(v.x) > 0.05 || Math.abs(v.z) > 0.05);
   });
 
   useFrame((state, delta) => {
     if (paused) return;
+    animTickRef.current++;
+    if ((animTickRef.current & 1) === 1) return;
     if (meshRef.current) {
       // Realistic idle animation - breathing and slight movement
       if (!isAttacking && !isWalking) {
@@ -260,22 +273,13 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isAttacking) return;
+      const k = event.key.toLowerCase();
+      if (k === 'w' || k === 'a' || k === 's' || k === 'd' || k === ' ' || k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') {
+        event.preventDefault();
+      }
 
       const pushMove = () => {
-        import('@/lib/analytics').then(({ addAction }) => {
-          const x = position2D[0];
-          const dist = Math.abs(x - (-x));
-          addAction({
-            game_type: 'fighting',
-            action_type: 'move',
-            timestamp: Date.now(),
-            success: true,
-            move_type: 'move',
-            position: [position2D[0], position2D[2] || 0],
-            combo_count: 0,
-            context: { player_health: 100, ai_health: 100, distance_to_opponent: dist },
-          });
-        });
+        // Disable high-frequency move analytics to prevent lag
       };
 
       switch (event.key.toLowerCase()) {
@@ -318,8 +322,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       if (inputRef.current.x === 0 && inputRef.current.z === 0) setIsWalking(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -350,6 +354,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     if (!isPlayer) return;
 
     const handleCombatKeys = (event: KeyboardEvent) => {
+      const k = event.key.toLowerCase();
+      if (k === 'j' || k === 'k' || k === 'l' || k === ' '){ event.preventDefault(); }
       switch (event.key.toLowerCase()) {
         case 'j':
           performAttack('punch');
@@ -394,7 +400,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
           break;
         case ' ':
           if (!isAttacking && !isBlocking && groundedRef.current) {
-            const v0 = 4.9; // initial jump velocity to reach ~1.2m
+            const v0 = 7.2; // stronger jump impulse for ~2m arc
             velRef.current.y = v0;
             groundedRef.current = false;
           }
@@ -524,7 +530,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange, aiOrder }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void, aiOrder?: { target?: [number, number]; swing?: { dir:[number,number,number]; power:number; spin?:[number,number,number] } } | null }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -603,30 +609,18 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         }
       }
 
-      // AI anticipates landing point and moves (stay on its half)
-      if (isAI && followTarget) {
-        const [sx, sy, sz] = followTarget;
-        const [vx = 0, vy = 0, vz = 0] = followVel || [0, 0, 0];
-        const g = -12;
-        const a = 0.5 * g;
-        const b = vy;
-        const c = sy - 0.12;
-        let tHit = 0.5;
-        const disc = b*b - 4*a*c;
-        if (disc >= 0) {
-          const t1 = (-b + Math.sqrt(disc)) / (2*a);
-          const t2 = (-b - Math.sqrt(disc)) / (2*a);
-          tHit = Math.max(t1, t2, 0.2);
+      // AI follows external orders with slower speed and cooldowns
+      if (isAI && aiOrder) {
+        if (aiOrder.target) {
+          const [tx, tz] = aiOrder.target;
+          const speed = 0.06;
+          const nx = playerPos[0] + Math.sign(tx - playerPos[0]) * speed;
+          const nz = playerPos[2] + Math.sign(tz - playerPos[2]) * speed;
+          const rightSide = position[0] > 0;
+          const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+          setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
+          setFacingDirection(tx > playerPos[0] ? 1 : -1);
         }
-        const targetX = sx + vx * tHit;
-        const targetZ = sz + vz * tHit;
-        const speed = 0.1;
-        const nx = playerPos[0] + Math.sign(targetX - playerPos[0]) * speed;
-        const nz = playerPos[2] + Math.sign(targetZ - playerPos[2]) * speed;
-        const rightSide = position[0] > 0;
-        const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
-        setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
-        setFacingDirection(sx > playerPos[0] ? 1 : -1);
       }
 
       // Face across the net (toward center line)
@@ -712,8 +706,8 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
       if (mInputRef.current.x === 0 && mInputRef.current.z === 0) setIsMoving(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -1106,8 +1100,8 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -1372,31 +1366,31 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
           </Box>
 
           {/* Reflective center line */}
-          {Array.from({ length: 200 }, (_, i) => (
-            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+          {Array.from({ length: 100 }, (_, i) => (
+            <Box key={i} args={[0.2, 0.02, 1.5]} position={[0, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
               <meshBasicMaterial color="#FFD700" />
             </Box>
           ))}
 
           {/* Reflective lane dividers */}
-          {Array.from({ length: 200 }, (_, i) => (
+          {Array.from({ length: 100 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[-3.5, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
-              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 2]} rotation={[-Math.PI / 2, 0, 0]}>
+              <Box args={[0.15, 0.02, 1]} position={[3.5, -1.83, -198 + i * 4]} rotation={[-Math.PI / 2, 0, 0]}>
                 <meshBasicMaterial color="#E0E0E0" />
               </Box>
             </React.Fragment>
           ))}
 
           {/* Illuminated track barriers */}
-          {Array.from({ length: 50 }, (_, i) => (
+          {Array.from({ length: 24 }, (_, i) => (
             <React.Fragment key={i}>
-              <Box args={[0.5, 1, 3]} position={[-9, -1, -147 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[-9, -1, -144 + i * 12]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
-              <Box args={[0.5, 1, 3]} position={[9, -1, -147 + i * 6]}>
+              <Box args={[0.5, 1, 3]} position={[9, -1, -144 + i * 12]}>
                 <meshPhongMaterial color="#C0C0C0" />
               </Box>
             </React.Fragment>
@@ -1481,15 +1475,8 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {/* Main arena lighting */}
       <directionalLight
         position={[15, 12, 8]}
-        intensity={gameType === 'racing' ? 0.8 : gameType === 'badminton' ? 2.0 : 1.5}
+        intensity={gameType === 'racing' ? 0.6 : gameType === 'badminton' ? 1.2 : 1.0}
         color={gameType === 'fighting' ? "#4ECDC4" : gameType === 'badminton' ? "#FFFFFF" : "#FFFFCC"}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={50}
-        shadow-camera-left={-15}
-        shadow-camera-right={15}
-        shadow-camera-top={15}
-        shadow-camera-bottom={-15}
       />
 
       {/* Accent lighting */}
@@ -1502,11 +1489,10 @@ const ArenaEnvironment = ({ gameType }: { gameType: 'fighting' | 'badminton' | '
       {/* Central spotlight */}
       <spotLight
         position={[0, 15, 0]}
-        intensity={gameType === 'racing' ? 2.0 : gameType === 'badminton' ? 1.5 : 1.2}
+        intensity={gameType === 'racing' ? 1.4 : gameType === 'badminton' ? 1.1 : 0.9}
         angle={Math.PI / 4}
         penumbra={0.3}
         color={gameType === 'racing' ? "#FFFFCC" : "#FFFFFF"}
-        castShadow
       />
 
       {/* Stadium lighting for badminton */}
@@ -1608,10 +1594,73 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
 
   // WebSocket & AI mapping
   const [wsEnabled, setWsEnabled] = useState(true);
-  const { connected, lastMessage } = useMultiGameWebSocket('arena-session', wsEnabled);
+  const sessionRef = useRef(`arena-${Date.now()}`);
+  const { connected, lastMessage, sendGameAction, sendGameStateUpdate } = useMultiGameWebSocket(sessionRef.current, wsEnabled);
   const [aiFightCmd, setAiFightCmd] = useState<FightingAI>(null);
   const [aiBadmintonShot, setAiBadmintonShot] = useState<'drop_shot' | 'smash' | 'clear' | 'net_shot' | null>(null);
   const [aiRaceCmd, setAiRaceCmd] = useState<RacingAI>(null);
+
+  // Live scoring state
+  const [fightingRounds, setFightingRounds] = useState<[number, number]>([0, 0]);
+  const [combos, setCombos] = useState<{ player: number; ai: number }>({ player: 0, ai: 0 });
+
+  const [badmintonScore, setBadmintonScore] = useState<[number, number]>([0, 0]);
+  const [rallyCount, setRallyCount] = useState(0);
+  const [gamePoint, setGamePoint] = useState<'player' | 'ai' | null>(null);
+
+  const [currentLap, setCurrentLap] = useState(1);
+  const [racingTotalLaps, setRacingTotalLaps] = useState(3);
+  const [racePosition, setRacePosition] = useState(1);
+  const [racingTotalRacers, setRacingTotalRacers] = useState(6);
+  const [lapTimes, setLapTimes] = useState<number[]>([]);
+  const [totalDistance, setTotalDistance] = useState(0);
+
+  // Speed approximation for analytics
+  const lastCarPosRef = useRef<[number, number, number]>(playerCarPos);
+  const lastCarTsRef = useRef<number>(performance.now());
+
+  // Fighting health helpers with analytics + round handling
+  const updatePlayerHealth = (damage: number, damageType: string) => {
+    setPlayerHealth((prev) => {
+      const newHealth = Math.max(0, prev - damage);
+      sendGameAction?.('fighting', {
+        action_type: 'health_update',
+        player_health: newHealth,
+        ai_health: aiHealth,
+        damage_dealt: damage,
+        damage_type: damageType,
+      });
+      if (newHealth <= 0) {
+        const rounds: [number, number] = [fightingRounds[0], fightingRounds[1] + 1];
+        setFightingRounds(rounds);
+        setPlayerHealth(100);
+        setAiHealth(100);
+        sendGameAction?.('fighting', { action_type: 'round_end', winner: 'ai', rounds });
+      }
+      return newHealth;
+    });
+  };
+
+  const updateAiHealth = (damage: number, damageType: string) => {
+    setAiHealth((prev) => {
+      const newHealth = Math.max(0, prev - damage);
+      sendGameAction?.('fighting', {
+        action_type: 'health_update',
+        player_health: playerHealth,
+        ai_health: newHealth,
+        damage_dealt: damage,
+        damage_type: damageType,
+      });
+      if (newHealth <= 0) {
+        const rounds: [number, number] = [fightingRounds[0] + 1, fightingRounds[1]];
+        setFightingRounds(rounds);
+        setPlayerHealth(100);
+        setAiHealth(100);
+        sendGameAction?.('fighting', { action_type: 'round_end', winner: 'player', rounds });
+      }
+      return newHealth;
+    });
+  };
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -1619,7 +1668,13 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     const game = msg.game || msg.new_game;
     const action = msg.ai_action || msg.action;
     if (game === 'fighting' && action) setAiFightCmd(action);
-    if (game === 'badminton' && action) setAiBadmintonShot(action);
+    if (game === 'badminton') {
+      // Drive AI via order (target predicted landing)
+      const [sx, sy, sz] = shuttlePos;
+      const [vx, vy, vz] = shuttleVel;
+      const tx: [number, number] = [sx + vx * 0.6, sz + vz * 0.6];
+      setAiBadmintonOrder({ target: tx });
+    }
     if (game === 'racing' && action) setAiRaceCmd(action);
     const t = setTimeout(() => { setAiFightCmd(null); setAiBadmintonShot(null); setAiRaceCmd(null); }, 900);
     return () => clearTimeout(t);
@@ -1694,7 +1749,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
       const dist = Math.hypot(dx, dz);
       if (dist < 1.0) {
         const dmg = aiFightCmd === 'kick' || aiFightCmd === 'combo_attack' ? 12 : 8;
-        setPlayerHealth(h => Math.max(0, h - dmg));
+        updatePlayerHealth(dmg, aiFightCmd || 'attack');
         const back = Math.sign(playerPosF[0] - aiPosF[0]) || 1;
         setPlayerPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
       }
@@ -1710,7 +1765,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         const dist = Math.hypot(dx, dz);
         if (dist < 1.0) {
           const dmg = e.key.toLowerCase() === 'k' ? 12 : 8;
-          setAiHealth(h => Math.max(0, h - dmg));
+          const attackType = e.key.toLowerCase() === 'k' ? 'kick' : 'punch';
+          updateAiHealth(dmg, attackType);
+          setCombos((c) => ({ ...c, player: c.player + 1 }));
+          setTimeout(() => setCombos((c) => ({ ...c, player: Math.max(0, c.player - 1) })), 2000);
           const back = Math.sign(aiPosF[0] - playerPosF[0]) || -1;
           setAiPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
         }
@@ -1734,8 +1792,111 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     shuttlePrevRef.current = {pos: p, t: now};
     setShuttlePos(p);
   };
+
+  // Badminton rally and scoring tracking
+  useEffect(() => {
+    const prev = shuttlePrevRef.current?.pos;
+    if (prev) {
+      const moved = Math.hypot(
+        shuttlePos[0] - prev[0],
+        shuttlePos[1] - prev[1],
+        shuttlePos[2] - prev[2]
+      );
+      if (moved > 1.0 && shuttlePos[1] > 1.0) setRallyCount((c) => c + 1);
+    }
+
+    const justLanded = shuttlePos[1] <= 0.12 && (prev ? prev[1] > 0.12 : true);
+    if (justLanded) {
+      const landedOnPlayerSide = shuttlePos[0] < 0;
+      const scorer = landedOnPlayerSide ? 'ai' : 'player';
+      const newScore: [number, number] = scorer === 'player'
+        ? [badmintonScore[0] + 1, badmintonScore[1]]
+        : [badmintonScore[0], badmintonScore[1] + 1];
+      setBadmintonScore(newScore);
+      setRallyCount(0);
+      const isGamePoint = Math.max(newScore[0], newScore[1]) >= 20;
+      setGamePoint(isGamePoint ? (scorer as 'player' | 'ai') : null);
+      sendGameAction?.('badminton', {
+        action_type: 'point_scored',
+        scorer,
+        score: newScore,
+        shot_type: 'placement',
+        rally_length: rallyCount,
+        is_game_point: isGamePoint,
+      });
+    }
+  }, [shuttlePos]);
+
+  // Racing progress and position tracking
+  useEffect(() => {
+    const now = performance.now();
+    const lastPos = lastCarPosRef.current;
+    const dt = Math.max(0.001, (now - lastCarTsRef.current) / 1000);
+    const dz = playerCarPos[2] - lastPos[2];
+    const dx = playerCarPos[0] - lastPos[0];
+    const speed = Math.sqrt(dx*dx + dz*dz) / dt;
+    lastCarPosRef.current = playerCarPos;
+    lastCarTsRef.current = now;
+
+    const newDist = Math.max(totalDistance, Math.abs(playerCarPos[2]));
+    if (newDist !== totalDistance) setTotalDistance(newDist);
+
+    const computedLap = Math.min(3, Math.floor(newDist / 100) + 1);
+    if (computedLap !== currentLap) {
+      setCurrentLap(computedLap);
+      setLapTimes((t) => [...t, Date.now()]);
+      sendGameAction?.('racing', {
+        action_type: 'lap_completed',
+        lap_number: computedLap,
+        lap_time: Date.now(),
+        position: racePosition,
+        total_distance: newDist,
+      });
+    }
+
+    const ranking = [
+      { who: 'human', z: playerCarPos[2] },
+      { who: 'ai1', z: aiCar1Pos[2] },
+      { who: 'ai2', z: aiCar2Pos[2] },
+    ].sort((a, b) => a.z - b.z);
+    const newPos = ranking.findIndex((r) => r.who === 'human') + 1;
+    if (newPos !== racePosition) {
+      setRacePosition(newPos);
+      sendGameAction?.('racing', {
+        action_type: 'position_change',
+        new_position: newPos,
+        lap: currentLap,
+        speed,
+      });
+    }
+  }, [playerCarPos, aiCar1Pos, aiCar2Pos]);
   const [playerShot, setPlayerShot] = useState<{ dir: [number, number, number]; power: number; spin?: [number,number,number] } | null>(null);
+  const [aiBadmintonOrder, setAiBadmintonOrder] = useState<{ target?: [number, number]; swing?: { dir:[number,number,number]; power:number; spin?:[number,number,number] } } | null>(null);
   const [playerBadPos, setPlayerBadPos] = useState<[number, number, number]>([-5, 0, 0]);
+
+  // Input state for physics player
+  const keysRef = useRef<Record<string, boolean>>({});
+  const [moveDir, setMoveDir] = useState<{ x: number; z: number }>({ x: 0, z: 0 });
+  const [jumpFlag, setJumpFlag] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      keysRef.current[e.key.toLowerCase()] = true;
+      const x = (keysRef.current["d"] ? 1 : 0) + (keysRef.current["arrowright"] ? 1 : 0) - (keysRef.current["a"] ? 1 : 0) - (keysRef.current["arrowleft"] ? 1 : 0);
+      const z = (keysRef.current["w"] ? -1 : 0) + (keysRef.current["arrowup"] ? -1 : 0) - (keysRef.current["s"] ? 1 : 0) - (keysRef.current["arrowdown"] ? 1 : 0);
+      setMoveDir({ x, z });
+      if (e.key.toLowerCase() === " ".trim() || e.key.toLowerCase() === "space") setJumpFlag(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      delete keysRef.current[e.key.toLowerCase()];
+      const x = (keysRef.current["d"] ? 1 : 0) + (keysRef.current["arrowright"] ? 1 : 0) - (keysRef.current["a"] ? 1 : 0) - (keysRef.current["arrowleft"] ? 1 : 0);
+      const z = (keysRef.current["w"] ? -1 : 0) + (keysRef.current["arrowup"] ? -1 : 0) - (keysRef.current["s"] ? 1 : 0) - (keysRef.current["arrowdown"] ? 1 : 0);
+      setMoveDir({ x, z });
+      if (e.key.toLowerCase() === " ".trim() || e.key.toLowerCase() === "space") setJumpFlag(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
 
   const renderGameContent = () => {
     switch (gameType) {
@@ -1748,13 +1909,25 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         );
       case 'badminton':
         return (
-          <>
-            {/* Players face each other across the net with realistic spacing (left-right) */}
+          <Physics gravity={[0, -9.81, 0]}>
+            <RigidBody type="fixed">
+              <CuboidCollider args={[60, 0.1, 60]} position={[0, -1.9, 0]} />
+            </RigidBody>
             <BadmintonPlayer position={[-5, 0, 0]} color="#22D3EE" isPlayer paused={paused || !gameStarted} followTarget={shuttlePos} followVel={shuttleVel} onPlayerHit={(dir,power,spin)=>setPlayerShot({dir: dir as [number,number,number], power, spin})} onPositionChange={setPlayerBadPos} />
-            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI followTarget={shuttlePos} followVel={shuttleVel} />
-            {/* Realistic Shuttlecock with physics */}
-            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} />
-          </>
+            <BadmintonPlayer position={[5, 0, 0]} color="#F97316" paused={paused || !gameStarted} isAI aiOrder={aiBadmintonOrder} />
+            <Shuttlecock paused={paused || !gameStarted} aiShot={aiBadmintonShot} onPositionChange={(p)=>updateShuttleState(p)} playerHit={playerShot} idleAnchor={playerBadPos} autoReturn={false} />
+            <BadmintonAIController
+              sessionId={sessionRef.current}
+              enabled={wsEnabled}
+              gameState={{
+                score: badmintonScore,
+                player: { pos: playerBadPos },
+                ai: { pos: aiCar1Pos },
+                shuttle: { pos: shuttlePos, vel: shuttleVel },
+              }}
+              onAIMove={(order) => setAiBadmintonOrder(order)}
+            />
+          </Physics>
         );
       case 'racing':
         return (
@@ -1769,20 +1942,24 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     }
   };
 
+  const arenaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { arenaRef.current?.focus(); }, []);
+
   return (
-    <div className="relative w-full h-screen bg-background overflow-hidden">
+    <div ref={arenaRef} tabIndex={0} onClick={() => arenaRef.current?.focus()} className="relative w-full h-screen bg-background overflow-hidden">
       {/* Game Arena */}
       <div className="absolute inset-0">
         <Canvas
+          dpr={[1, 1.25]}
           camera={{
             position: [6, 2, 6],
             fov: gameType === 'racing' ? 60 : 75,
             near: 0.1,
             far: 1000
           }}
-          shadows
+          shadows={false}
           gl={{
-            antialias: true,
+            antialias: false,
             alpha: false,
             powerPreference: "high-performance"
           }}
@@ -1816,18 +1993,18 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         {/* Top Score Bar */}
         <div className="absolute top-4 left-0 right-0 flex justify-center">
           {gameType === 'fighting' && (
-            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={[0, 0]} />
+            <ScoreBar game="fighting" playerHealth={playerHealth} aiHealth={aiHealth} rounds={fightingRounds} />
           )}
           {gameType === 'badminton' && (
-            <ScoreBar game="badminton" score={[0, 0]} />
+            <ScoreBar game="badminton" score={badmintonScore} />
           )}
           {gameType === 'racing' && (
-            <ScoreBar game="racing" lap={1} totalLaps={3} position={1} totalRacers={6} />
+            <ScoreBar game="racing" lap={currentLap} totalLaps={racingTotalLaps} position={racePosition} totalRacers={racingTotalRacers} />
           )}
         </div>
 
         {/* Top HUD */}
-        <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-auto">
+        <div className="absolute top-20 left-4 right-4 flex justify-between items-start pointer-events-auto z-50">
           {/* Game Switcher */}
           <div className="flex gap-2">
             {(['fighting', 'badminton', 'racing'] as const).map((game) => (
@@ -1860,7 +2037,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
                   setPaused(p => !p);
                 }
               }}
-              className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
+              className="hud-element px-3 py-2 rounded-lg text-xs font-medium pointer-events-auto"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -1870,7 +2047,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             {/* Analytics Button */}
             <motion.button
               onClick={onToggleAnalytics}
-              className="hud-element px-3 py-2 rounded-lg text-xs font-medium"
+              className="hud-element px-3 py-2 rounded-lg text-xs font-medium pointer-events-auto"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >

@@ -49,7 +49,9 @@ const postJSON = async <T>(url: string, body: unknown): Promise<T> => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.status}`);
+  }
   return res.json();
 };
 
