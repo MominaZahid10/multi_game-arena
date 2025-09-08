@@ -1771,7 +1771,10 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
         const dist = Math.hypot(dx, dz);
         if (dist < 1.0) {
           const dmg = e.key.toLowerCase() === 'k' ? 12 : 8;
-          setAiHealth(h => Math.max(0, h - dmg));
+          const attackType = e.key.toLowerCase() === 'k' ? 'kick' : 'punch';
+          updateAiHealth(dmg, attackType);
+          setCombos((c) => ({ ...c, player: c.player + 1 }));
+          setTimeout(() => setCombos((c) => ({ ...c, player: Math.max(0, c.player - 1) })), 2000);
           const back = Math.sign(aiPosF[0] - playerPosF[0]) || -1;
           setAiPosF(p => [p[0] + back * 0.5, p[1], p[2]]);
         }
