@@ -331,8 +331,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
       if (inputRef.current.x === 0 && inputRef.current.z === 0) setIsWalking(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -363,6 +363,8 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
     if (!isPlayer) return;
 
     const handleCombatKeys = (event: KeyboardEvent) => {
+      const k = event.key.toLowerCase();
+      if (k === 'j' || k === 'k' || k === 'l' || k === ' '){ event.preventDefault(); }
       switch (event.key.toLowerCase()) {
         case 'j':
           performAttack('punch');
@@ -725,8 +727,8 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
       if (mInputRef.current.x === 0 && mInputRef.current.z === 0) setIsMoving(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -1119,8 +1121,8 @@ const RacingCar = ({ position, color, isPlayer = false, paused = false, raceRunn
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -1944,8 +1946,11 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     }
   };
 
+  const arenaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { arenaRef.current?.focus(); }, []);
+
   return (
-    <div className="relative w-full h-screen bg-background overflow-hidden">
+    <div ref={arenaRef} tabIndex={0} onClick={() => arenaRef.current?.focus()} className="relative w-full h-screen bg-background overflow-hidden">
       {/* Game Arena */}
       <div className="absolute inset-0">
         <Canvas
