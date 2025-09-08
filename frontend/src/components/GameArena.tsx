@@ -1614,6 +1614,66 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   const [aiBadmintonShot, setAiBadmintonShot] = useState<'drop_shot' | 'smash' | 'clear' | 'net_shot' | null>(null);
   const [aiRaceCmd, setAiRaceCmd] = useState<RacingAI>(null);
 
+  // Live scoring state
+  const [fightingRounds, setFightingRounds] = useState<[number, number]>([0, 0]);
+  const [combos, setCombos] = useState<{ player: number; ai: number }>({ player: 0, ai: 0 });
+
+  const [badmintonScore, setBadmintonScore] = useState<[number, number]>([0, 0]);
+  const [rallyCount, setRallyCount] = useState(0);
+  const [gamePoint, setGamePoint] = useState<'player' | 'ai' | null>(null);
+
+  const [currentLap, setCurrentLap] = useState(1);
+  const [racePosition, setRacePosition] = useState(1);
+  const [lapTimes, setLapTimes] = useState<number[]>([]);
+  const [totalDistance, setTotalDistance] = useState(0);
+
+  // Speed approximation for analytics
+  const lastCarPosRef = useRef<[number, number, number]>(playerCarPos);
+  const lastCarTsRef = useRef<number>(performance.now());
+
+  // Fighting health helpers with analytics + round handling
+  const updatePlayerHealth = (damage: number, damageType: string) => {
+    setPlayerHealth((prev) => {
+      const newHealth = Math.max(0, prev - damage);
+      sendGameAction?.('fighting', {
+        action_type: 'health_update',
+        player_health: newHealth,
+        ai_health: aiHealth,
+        damage_dealt: damage,
+        damage_type: damageType,
+      });
+      if (newHealth <= 0) {
+        const rounds: [number, number] = [fightingRounds[0], fightingRounds[1] + 1];
+        setFightingRounds(rounds);
+        setPlayerHealth(100);
+        setAiHealth(100);
+        sendGameAction?.('fighting', { action_type: 'round_end', winner: 'ai', rounds });
+      }
+      return newHealth;
+    });
+  };
+
+  const updateAiHealth = (damage: number, damageType: string) => {
+    setAiHealth((prev) => {
+      const newHealth = Math.max(0, prev - damage);
+      sendGameAction?.('fighting', {
+        action_type: 'health_update',
+        player_health: playerHealth,
+        ai_health: newHealth,
+        damage_dealt: damage,
+        damage_type: damageType,
+      });
+      if (newHealth <= 0) {
+        const rounds: [number, number] = [fightingRounds[0] + 1, fightingRounds[1]];
+        setFightingRounds(rounds);
+        setPlayerHealth(100);
+        setAiHealth(100);
+        sendGameAction?.('fighting', { action_type: 'round_end', winner: 'player', rounds });
+      }
+      return newHealth;
+    });
+  };
+
   useEffect(() => {
     if (!lastMessage) return;
     const msg: any = lastMessage;
