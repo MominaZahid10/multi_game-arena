@@ -529,7 +529,7 @@ const FighterCharacter = ({ position, color, isPlayer = false, initialFacing = 1
 };
 
 // Badminton Player Component - Realistic with animations
-const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void }) => {
+const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, isAI = false, followTarget, followVel, onPlayerHit, onPositionChange, aiOrder }: { position: [number, number, number], color: string, isPlayer?: boolean, paused?: boolean, isAI?: boolean, followTarget?: [number, number, number], followVel?: [number, number, number], onPlayerHit?: (dir:[number,number,number], power:number, spin?:[number,number,number])=>void, onPositionChange?: (pos:[number,number,number])=>void, aiOrder?: { target?: [number, number]; swing?: { dir:[number,number,number]; power:number; spin?:[number,number,number] } } | null }) => {
   const groupRef = useRef<THREE.Group>(null);
   const racketRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
@@ -608,30 +608,18 @@ const BadmintonPlayer = ({ position, color, isPlayer = false, paused = false, is
         }
       }
 
-      // AI anticipates landing point and moves (stay on its half)
-      if (isAI && followTarget) {
-        const [sx, sy, sz] = followTarget;
-        const [vx = 0, vy = 0, vz = 0] = followVel || [0, 0, 0];
-        const g = -12;
-        const a = 0.5 * g;
-        const b = vy;
-        const c = sy - 0.12;
-        let tHit = 0.5;
-        const disc = b*b - 4*a*c;
-        if (disc >= 0) {
-          const t1 = (-b + Math.sqrt(disc)) / (2*a);
-          const t2 = (-b - Math.sqrt(disc)) / (2*a);
-          tHit = Math.max(t1, t2, 0.2);
+      // AI follows external orders with slower speed and cooldowns
+      if (isAI && aiOrder) {
+        if (aiOrder.target) {
+          const [tx, tz] = aiOrder.target;
+          const speed = 0.06;
+          const nx = playerPos[0] + Math.sign(tx - playerPos[0]) * speed;
+          const nz = playerPos[2] + Math.sign(tz - playerPos[2]) * speed;
+          const rightSide = position[0] > 0;
+          const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
+          setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
+          setFacingDirection(tx > playerPos[0] ? 1 : -1);
         }
-        const targetX = sx + vx * tHit;
-        const targetZ = sz + vz * tHit;
-        const speed = 0.1;
-        const nx = playerPos[0] + Math.sign(targetX - playerPos[0]) * speed;
-        const nz = playerPos[2] + Math.sign(targetZ - playerPos[2]) * speed;
-        const rightSide = position[0] > 0;
-        const clampedX = rightSide ? Math.max(0.6, Math.min(7, nx)) : Math.max(-7, Math.min(-0.6, nx));
-        setPlayerPos([clampedX, playerPos[1], Math.max(-2.8, Math.min(2.8, nz))]);
-        setFacingDirection(sx > playerPos[0] ? 1 : -1);
       }
 
       // Face across the net (toward center line)
