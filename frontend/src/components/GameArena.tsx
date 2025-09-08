@@ -1959,7 +1959,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
             <ScoreBar game="badminton" score={badmintonScore} />
           )}
           {gameType === 'racing' && (
-            <ScoreBar game="racing" lap={currentLap} totalLaps={3} position={racePosition} totalRacers={6} />
+            <ScoreBar game="racing" lap={currentLap} totalLaps={racingTotalLaps} position={racePosition} totalRacers={racingTotalRacers} />
           )}
         </div>
 
