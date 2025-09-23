@@ -197,15 +197,54 @@ class MultiGameAnalyzer:
         
         # Fallback to rule-based analysis
         print(f"📋 Using rule-based analysis fallback...")
+        # Initialize the rule-based personality synthesizer
         personality_synthesizer = PersonalitySynthesizer()
-        unified_profile = await personality_synthesizer.synthesize(all_features)
         
-        # Add default categories for fallback
-        unified_profile.personality_archetype = "🎮 Classic Gamer"
-        unified_profile.playstyle_category = "📊 Rule-Based Analysis"
-        unified_profile.category_confidence = unified_profile.confidence_score
+        # Log that we're using the rule-based fallback
+        print(f"🔄 Using rule-based personality analysis with {len(all_features)} features")
         
-        print(f"✅ Rule-based analysis complete")
+        # Determine which games were analyzed
+        games_analyzed = set()
+        for feature in all_features:
+            if hasattr(feature, 'game_source') and feature.game_source:
+                games_analyzed.add(feature.game_source)
+        
+        print(f"🎮 Games analyzed: {', '.join(games_analyzed)}")
+        
+        # Synthesize the personality profile using rule-based approach
+        try:
+            unified_profile = await personality_synthesizer.synthesize(all_features)
+            
+            print(f"✅ Rule-based analysis complete")
+            print(f"  🏷️ Type: {unified_profile.personality_archetype}")
+            print(f"  🎮 Style: {unified_profile.playstyle_category}")
+            print(f"  📊 Confidence: {unified_profile.confidence_score:.3f}")
+            print(f"  🔄 Category Confidence: {unified_profile.category_confidence:.3f}")
+        except Exception as e:
+            print(f"❌ Error in rule-based personality synthesis: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Create a default personality profile as ultimate fallback
+            print(f"⚠️ Creating default personality profile as ultimate fallback")
+            unified_profile = UnifiedPersonality(
+                aggression_level=0.5,
+                risk_tolerance=0.5,
+                analytical_thinking=0.5,
+                patience_level=0.5,
+                precision_focus=0.5,
+                competitive_drive=0.5,
+                strategic_thinking=0.5,
+                adaptability=0.5,
+                confidence_score=0.3,  # Low confidence since this is a default
+                total_actions_analyzed=len(all_features),
+                games_played=list(games_analyzed),
+                last_updated=datetime.now(),
+                personality_archetype="🎮 Balanced Player",
+                playstyle_category="🎯 Adaptive Gamer",
+                category_confidence=0.3
+            )
+        
         return unified_profile
     
     def _extract_ml_features_fighting(self, actions: List[Any]) -> List[float]:
@@ -518,6 +557,73 @@ class RacingBehaviorAnalyzer:
 class PersonalitySynthesizer:
     """Enhanced personality synthesis with ML fallback"""
     
+    def __init__(self):
+        # Define personality archetypes with their trait thresholds
+        self.personality_archetypes = {
+            "🔥 Aggressive Dominator": {
+                "primary_traits": ["aggression_level", "competitive_drive"],
+                "threshold": 0.7
+            },
+            "🧠 Strategic Analyst": {
+                "primary_traits": ["analytical_thinking", "strategic_thinking"],
+                "threshold": 0.7
+            },
+            "⚡ Risk-Taking Maverick": {
+                "primary_traits": ["risk_tolerance", "aggression_level"],
+                "threshold": 0.7
+            },
+            "🛡️ Defensive Tactician": {
+                "primary_traits": ["patience_level", "strategic_thinking"],
+                "threshold": 0.7
+            },
+            "🎯 Precision Master": {
+                "primary_traits": ["precision_focus", "analytical_thinking"],
+                "threshold": 0.7
+            },
+            "🌪️ Chaos Creator": {
+                "primary_traits": ["risk_tolerance", "aggression_level"],
+                "threshold": 0.7,
+                "negative_traits": ["precision_focus", "analytical_thinking"],
+                "negative_threshold": 0.3
+            },
+            "📊 Data-Driven Player": {
+                "primary_traits": ["analytical_thinking", "precision_focus"],
+                "threshold": 0.7
+            },
+            "🏆 Victory Seeker": {
+                "primary_traits": ["competitive_drive", "strategic_thinking"],
+                "threshold": 0.7
+            }
+        }
+        
+        # Define playstyle categories with their game-specific traits
+        self.playstyle_categories = {
+            "🥊 Combat Veteran": {
+                "game_focus": "fighting",
+                "traits": ["aggression_level", "risk_tolerance"]
+            },
+            "🏸 Court Strategist": {
+                "game_focus": "badminton",
+                "traits": ["strategic_thinking", "precision_focus"]
+            },
+            "🏎️ Speed Demon": {
+                "game_focus": "racing",
+                "traits": ["competitive_drive", "risk_tolerance"]
+            },
+            "🎮 Multi-Game Master": {
+                "game_focus": "all",
+                "traits": ["adaptability", "strategic_thinking"]
+            },
+            "🧩 Adaptive Learner": {
+                "game_focus": "all",
+                "traits": ["analytical_thinking", "adaptability"]
+            },
+            "🔄 Pattern Seeker": {
+                "game_focus": "all",
+                "traits": ["analytical_thinking", "precision_focus"]
+            }
+        }
+    
     async def synthesize(self, features: List[BehavioralFeature]) -> UnifiedPersonality:
         """Main synthesis method - fallback for when ML models aren't available"""
         # Initialize base personality
@@ -555,10 +661,92 @@ class PersonalitySynthesizer:
         # Calculate final confidence
         final_confidence = min(1.0, overall_confidence / len(personality_traits))
         
+        # Determine personality archetype
+        personality_archetype, archetype_confidence = self._determine_personality_archetype(personality_traits)
+        
+        # Determine playstyle category
+        playstyle_category, playstyle_confidence = self._determine_playstyle_category(
+            personality_traits, 
+            list(set(f.game_source for f in features))
+        )
+        
+        # Calculate category confidence (average of archetype and playstyle confidence)
+        category_confidence = (archetype_confidence + playstyle_confidence) / 2
+        
         return UnifiedPersonality(
             **personality_traits,
             confidence_score=final_confidence,
             total_actions_analyzed=total_actions,
             games_played=list(set(f.game_source for f in features)),
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
+            personality_archetype=personality_archetype,
+            playstyle_category=playstyle_category,
+            category_confidence=category_confidence
         )
+    
+    def _determine_personality_archetype(self, traits: Dict[str, float]) -> tuple:
+        """Determine the best matching personality archetype based on traits"""
+        best_match = None
+        best_score = 0.0
+        
+        for archetype, criteria in self.personality_archetypes.items():
+            # Calculate match score based on primary traits
+            primary_traits = criteria["primary_traits"]
+            threshold = criteria["threshold"]
+            
+            # Calculate average of primary traits
+            primary_avg = sum(traits[trait] for trait in primary_traits) / len(primary_traits)
+            match_score = primary_avg
+            
+            # Apply negative trait penalties if defined
+            if "negative_traits" in criteria and "negative_threshold" in criteria:
+                negative_traits = criteria["negative_traits"]
+                negative_threshold = criteria["negative_threshold"]
+                
+                # Check if negative traits are below threshold (as expected)
+                negative_avg = sum(traits[trait] for trait in negative_traits) / len(negative_traits)
+                if negative_avg > negative_threshold:
+                    # Penalize score if negative traits are too high
+                    match_score *= (1 - (negative_avg - negative_threshold))
+            
+            # Update best match if this is better
+            if match_score > best_score and primary_avg >= threshold:
+                best_score = match_score
+                best_match = archetype
+        
+        # Default if no good match found
+        if not best_match:
+            return "🎮 Balanced Player", 0.5
+        
+        return best_match, best_score
+    
+    def _determine_playstyle_category(self, traits: Dict[str, float], games_played: List[str]) -> tuple:
+        """Determine the best matching playstyle category based on traits and games played"""
+        best_match = None
+        best_score = 0.0
+        
+        for playstyle, criteria in self.playstyle_categories.items():
+            game_focus = criteria["game_focus"]
+            style_traits = criteria["traits"]
+            
+            # Skip if game-specific and not played
+            if game_focus != "all" and game_focus not in games_played:
+                continue
+            
+            # Calculate match score based on traits
+            trait_avg = sum(traits[trait] for trait in style_traits) / len(style_traits)
+            
+            # Boost score if this is a game-specific category and that game was played
+            game_bonus = 0.2 if game_focus in games_played and game_focus != "all" else 0.0
+            match_score = trait_avg + game_bonus
+            
+            # Update best match if this is better
+            if match_score > best_score:
+                best_score = match_score
+                best_match = playstyle
+        
+        # Default if no good match or no games played
+        if not best_match or not games_played:
+            return "🎯 Adaptive Gamer", 0.5
+        
+        return best_match, best_score

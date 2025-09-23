@@ -13,17 +13,29 @@ export const WebSocketTest: React.FC = () => {
   } = useMultiGameWebSocket('test-session-123');
 
   const testFightingAction = () => {
+    const playerHealth = Math.floor(Math.random() * 50) + 50;
+    const aiHealth = Math.floor(Math.random() * 50) + 50;
+    
     sendGameAction('fighting', {
       action_type: 'attack',
       move_type: 'punch',
       success: Math.random() > 0.3,
       position: { x: 100, y: 200 },
       damage_dealt: Math.floor(Math.random() * 20) + 5,
-      combo_count: Math.floor(Math.random() * 3) + 1
+      combo_count: Math.floor(Math.random() * 3) + 1,
+      context: {
+        player_health: playerHealth,
+        ai_health: aiHealth,
+        distance_to_opponent: Math.floor(Math.random() * 3) + 1,
+        round: 1
+      }
     });
   };
 
   const testBadmintonAction = () => {
+    const playerScore = Math.floor(Math.random() * 15);
+    const aiScore = Math.floor(Math.random() * 15);
+    
     sendGameAction('badminton', {
       action_type: 'shot',
       shot_type: 'smash',
@@ -31,18 +43,33 @@ export const WebSocketTest: React.FC = () => {
       court_position: { x: 150, y: 100 },
       shuttlecock_target: { x: 350, y: 300 },
       power_level: Math.random(),
-      rally_position: Math.floor(Math.random() * 10) + 1
+      rally_position: Math.floor(Math.random() * 10) + 1,
+      context: {
+        player_score: playerScore,
+        ai_score: aiScore,
+        rally_count: Math.floor(Math.random() * 20) + 1,
+        game_point: playerScore >= 20 || aiScore >= 20
+      }
     });
   };
 
   const testRacingAction = () => {
+    const lap = Math.floor(Math.random() * 3) + 1;
+    const racePosition = Math.floor(Math.random() * 5) + 1;
+    
     sendGameAction('racing', {
       action_type: 'overtake',
       success: Math.random() > 0.4,
       speed: Math.floor(Math.random() * 50) + 60,
       position_on_track: { x: Math.random() * 400, y: Math.random() * 300 },
       overtaking_attempt: true,
-      crash_occurred: Math.random() > 0.8
+      crash_occurred: Math.random() > 0.8,
+      context: {
+        lap: lap,
+        race_position: racePosition,
+        total_distance: Math.floor(Math.random() * 1000) + 500,
+        lap_times: [Math.random() * 60 + 60, Math.random() * 60 + 60]
+      }
     });
   };
 

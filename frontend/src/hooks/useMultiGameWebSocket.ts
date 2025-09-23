@@ -81,10 +81,42 @@ export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', en
           try {
             const msg = JSON.parse(evt.data);
             setLastMessage(msg);
+            console.log('Received WebSocket message:', msg);
+            
+            // Handle different message types from backend
             if (msg?.type === 'game_state_update' && msg?.game) {
               setGameState((prev) => ({ ...prev, [msg.game]: msg.state }));
+            } else if (msg?.type === 'game_update') {
+              // Handle game updates with AI response
+              if (msg.personality_profile) {
+                console.log('Received personality update:', msg.personality_profile);
+              }
+              // Update game state if available
+              if (msg.game_state) {
+                const gameType = msg.current_game || 'fighting';
+                setGameState((prev) => ({ ...prev, [gameType]: msg.game_state }));
+              }
+              // Log AI response
+              if (msg.ai_response) {
+                console.log('AI response:', msg.ai_response);
+              }
+              // Log any errors
+              if (msg.error) {
+                console.error('Error in game update:', msg.error);
+              }
+            } else if (msg?.type === 'session_status') {
+              // Handle session status updates
+              console.log('Session status:', msg);
+              if (msg.current_game) {
+                // If we have game state in the insights, use it
+                if (msg.insights && msg.insights.game_state) {
+                  setGameState((prev) => ({ ...prev, [msg.current_game]: msg.insights.game_state }));
+                }
+              }
             }
-          } catch {}
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
         };
 
         sock.onerror = () => {
@@ -130,11 +162,14 @@ export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', en
 
   const sendGameAction = useCallback((game: string, action: GameAction) => {
     return sendRaw({
-      type: 'game_action',
-      game,
-      session_id: sessionId,
-      ...action,
-      timestamp: action.timestamp ?? Date.now(),
+      type: 'player_action',  // Changed from 'game_action' to match backend expectation
+      action: {
+        game_type: game,
+        session_id: sessionId,
+        ...action,
+        timestamp: action.timestamp ?? Date.now(),
+        context: action.context || {}
+      }
     });
   }, [sessionId]);
 
@@ -149,7 +184,7 @@ export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', en
   }, [sessionId]);
 
   const switchGame = useCallback((newGame: GameType) => {
-    return sendRaw({ type: 'switch_game', new_game: newGame, session_id: sessionId, timestamp: Date.now() });
+    return sendRaw({ type: 'game_switch', new_game: newGame, session_id: sessionId, timestamp: Date.now() });
   }, [sessionId]);
 
   const getStatus = useCallback(() => {

@@ -74,6 +74,12 @@ class PersonalityProfile(Base):
     competitive_drive = Column(Float, default=0.5)
     strategic_thinking = Column(Float, default=0.5)
     adaptability = Column(Float, default=0.5)
+    
+    # Personality archetype and playstyle category
+    personality_archetype = Column(String, default="🎮 Classic Gamer")
+    playstyle_category = Column(String, default="📊 Rule-Based Analysis")
+    category_confidence = Column(Float, default=0.7)
+    
     trait_confidence = Column(JSON, default=dict) 
     overall_confidence = Column(Float, default=0.0)
     consistency_score = Column(Float, default=0.0)  

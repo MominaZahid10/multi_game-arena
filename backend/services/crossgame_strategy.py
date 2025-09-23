@@ -36,28 +36,62 @@ class CrossGameStrategySelector:
         unified_personality: UnifiedPersonality,
         cross_game_history: List[Dict] = None
     ) -> Dict[str, Any]:
-        """Select optimal AI strategy based on cross-game personality analysis"""
+        """Select optimal AI strategy based on cross-game personality analysis
         
-        # Analyze player personality for strategy selection
-        strategy_name = self._select_strategy_by_personality(game_type, unified_personality)
-        strategy_config = self.strategies[game_type][strategy_name]
-        
-        # Generate game-specific action
-        action = await self._generate_game_action(game_type, strategy_name, game_state)
-        
-        # Create cross-game reasoning
-        reasoning = self._build_cross_game_reasoning(
-            unified_personality, strategy_name, cross_game_history or []
-        )
-        
-        return {
-            "action": action,
-            "strategy": strategy_name,
-            "confidence": min(1.0, unified_personality.confidence_score + 0.2),
-            "reasoning": reasoning,
-            "insights": self._generate_personality_insights(unified_personality),
-            "notes": [f"Adapting to {game_type.value} based on cross-game analysis"]
-        }
+        Enhanced with rule-based fallback for when ML components are unavailable
+        """
+        try:
+            print(f"🎮 Selecting strategy for {game_type.value} game")
+            
+            # Validate inputs to catch potential issues early
+            if not unified_personality:
+                raise ValueError("Missing personality profile")
+                
+            if not game_state:
+                raise ValueError("Missing game state")
+            
+            # Analyze player personality for strategy selection
+            strategy_name = self._select_strategy_by_personality(game_type, unified_personality)
+            strategy_config = self.strategies[game_type][strategy_name]
+            
+            print(f"📊 Selected strategy: {strategy_name} with difficulty {strategy_config['difficulty']}")
+            
+            # Generate game-specific action
+            action = await self._generate_game_action(game_type, strategy_name, game_state)
+            
+            # Create cross-game reasoning
+            reasoning = self._build_cross_game_reasoning(
+                unified_personality, strategy_name, cross_game_history or []
+            )
+            
+            return {
+                "action": action,
+                "strategy": strategy_name,
+                "confidence": min(1.0, unified_personality.confidence_score + 0.2),
+                "reasoning": reasoning,
+                "insights": self._generate_personality_insights(unified_personality),
+                "notes": [f"Adapting to {game_type.value} based on cross-game analysis"]
+            }
+        except Exception as e:
+            # Rule-based fallback when strategy selection fails
+            print(f"❌ Strategy selection error: {e}")
+            print(f"⚠️ Using rule-based fallback for {game_type.value} game")
+            
+            # Import here to avoid circular imports
+            from backend.services.rulebased_ai import RuleBasedAIOpponent
+            
+            # Create a rule-based AI opponent
+            rule_based_ai = RuleBasedAIOpponent()
+            
+            # Get action using rule-based AI
+            fallback_result = rule_based_ai.get_action(game_type, game_state, unified_personality)
+            
+            # Add additional context for debugging
+            fallback_result["strategy"] = "rule_based_fallback"
+            fallback_result["notes"] = [f"Fallback strategy for {game_type.value} due to error: {str(e)}", 
+                                     "Using rule-based AI opponent"]
+            
+            return fallback_result
     
     def _select_strategy_by_personality(self, game_type: GameType, personality: UnifiedPersonality) -> str:
         """Select strategy based on unified personality traits"""

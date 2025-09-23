@@ -247,6 +247,11 @@ async def analyze_universal_player(
         personality_db.precision_focus = getattr(unified_personality, 'precision_focus', 0.5)
         personality_db.competitive_drive = getattr(unified_personality, 'competitive_drive', 0.5)
         personality_db.strategic_thinking = getattr(unified_personality, 'strategic_thinking', 0.5)
+        
+        # Add personality archetype and playstyle category
+        personality_db.personality_archetype = getattr(unified_personality, 'personality_archetype', "🎮 Classic Gamer")
+        personality_db.playstyle_category = getattr(unified_personality, 'playstyle_category', "📊 Rule-Based Analysis")
+        personality_db.category_confidence = getattr(unified_personality, 'category_confidence', 0.7)
 
         # ------- FIX: Safely handle None for personality_db.total_actions_analyzed -------
         if personality_db.total_actions_analyzed is None:
@@ -350,47 +355,97 @@ async def get_cross_game_ai_action(
     db: Session = Depends(get_db)
 ):
     """
-    DAY 2 DELIVERABLE: Cross-Game AI Strategy Selection
+    Cross-Game AI Strategy Selection
     Get AI action informed by cross-game personality analysis
+    Prioritizes rule-based AI when ML is not available
     """
     try:
+        print(f"🎮 Processing AI action request for {game_type.value} game")
+        
         # Get unified personality from database
         personality_db = db.query(PersonalityProfile).filter(
             PersonalityProfile.session_id == request.session_id
         ).first()
         
         if not personality_db:
-            raise HTTPException(status_code=404, detail="No personality profile found")
+            print(f"⚠️ No personality profile found for session {request.session_id}")
+            print(f"⚙️ Creating default personality profile")
+            # Create a default balanced personality profile
+            unified_personality = UnifiedPersonality(
+                aggression_level=0.5,
+                risk_tolerance=0.5,
+                analytical_thinking=0.5,
+                patience_level=0.5,
+                precision_focus=0.5,
+                competitive_drive=0.5,
+                strategic_thinking=0.5,
+                personality_archetype="🎮 Classic Gamer",
+                playstyle_category="📊 Rule-Based Analysis",
+                confidence_score=0.7,
+                category_confidence=0.7
+            )
+        else:
+            print(f"✅ Found personality profile for session {request.session_id}")
+            # Convert to unified personality format
+            unified_personality = UnifiedPersonality(
+                aggression_level=personality_db.aggression_level,
+                risk_tolerance=personality_db.risk_tolerance,
+                analytical_thinking=personality_db.analytical_thinking,
+                patience_level=personality_db.patience_level,
+                precision_focus=personality_db.precision_focus,
+                competitive_drive=personality_db.competitive_drive,
+                strategic_thinking=personality_db.strategic_thinking,
+                personality_archetype=getattr(personality_db, 'personality_archetype', "🎮 Classic Gamer"),
+                playstyle_category=getattr(personality_db, 'playstyle_category', "📊 Rule-Based Analysis"),
+                confidence_score=0.85,
+                category_confidence=0.85
+            )
         
-        # Convert to unified personality format
-        unified_personality = UnifiedPersonality(
-            aggression_level=personality_db.aggression_level,
-            risk_tolerance=personality_db.risk_tolerance,
-            analytical_thinking=personality_db.analytical_thinking,
-            patience_level=personality_db.patience_level,
-            precision_focus=personality_db.precision_focus,
-            competitive_drive=personality_db.competitive_drive,
-            strategic_thinking=personality_db.strategic_thinking
-        )
-        
-        # Select optimal action using cross-game strategy
-        optimal_action = await strategy_selector.select_action(
-            game_type=game_type,
-            game_state=request.game_state,
-            unified_personality=unified_personality,
-            cross_game_history=request.cross_game_history or []
-        )
-        
-        return CrossGameAIResponse(
-            current_game_action=optimal_action["action"],
-            confidence=optimal_action["confidence"],
-            strategy=optimal_action["strategy"],
-            cross_game_reasoning=optimal_action["reasoning"],
-            personality_insights=optimal_action.get("insights", {}),
-            adaptation_notes=optimal_action.get("notes", [])
-        )
+        # Try using cross-game strategy selector
+        try:
+            print(f"🧠 Using cross-game strategy selector")
+            optimal_action = await strategy_selector.select_action(
+                game_type=game_type,
+                game_state=request.game_state,
+                unified_personality=unified_personality,
+                cross_game_history=request.cross_game_history or []
+            )
+            
+            print(f"✅ Strategy selected: {optimal_action['strategy']}")
+            return CrossGameAIResponse(
+                current_game_action=optimal_action["action"],
+                confidence=optimal_action["confidence"],
+                strategy=optimal_action["strategy"],
+                cross_game_reasoning=optimal_action["reasoning"],
+                personality_insights=optimal_action.get("insights", {}),
+                adaptation_notes=optimal_action.get("notes", [])
+            )
+            
+        except Exception as strategy_error:
+            # Fallback to rule-based AI
+            print(f"⚠️ Strategy selector error: {strategy_error}")
+            print(f"⚙️ Falling back to rule-based AI")
+            
+            rule_based_ai = RuleBasedAIOpponent()
+            ai_action = rule_based_ai.get_action(game_type, request.game_state, unified_personality)
+            
+            # Format response to match CrossGameAIResponse
+            return CrossGameAIResponse(
+                current_game_action=ai_action,
+                confidence=0.75,
+                strategy=f"Rule-based {game_type.value} strategy",
+                cross_game_reasoning="Using rule-based AI with personality adaptation",
+                personality_insights={
+                    "aggression": unified_personality.aggression_level,
+                    "risk_tolerance": unified_personality.risk_tolerance,
+                    "patience": unified_personality.patience_level,
+                    "strategic_thinking": unified_personality.strategic_thinking
+                },
+                adaptation_notes=["Using rule-based fallback system", f"Adapting to {unified_personality.personality_archetype} archetype"]
+            )
         
     except Exception as e:
+        print(f"❌ AI action failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI action failed: {str(e)}")
 
 # Remove lines 20-27 (the placeholder class)
@@ -765,37 +820,60 @@ class EnhancedMultiGameSession:
     
     async def process_player_action(self, action_data: dict):
         """Process player action and generate AI response"""
-        
-        # Store player action in database
-        db_action = PlayerAction(
-            session_id=self.session_id,
-            game_type=self.current_game,
-            action_type=action_data.get('action_type', 'unknown'),
-            timestamp=action_data.get('timestamp', time.time()),
-            success=action_data.get('success', False),
-            action_data=action_data,
-            context=action_data.get('context', {})
-        )
-        self.db.add(db_action)
-        self.action_count += 1
-        
-        # Update personality analysis
-        await self._update_personality_analysis(action_data)
-        
-        # Generate AI response
-        ai_response = self.ai_opponent.get_action(
-            GameType(self.current_game),
-            self.game_states[self.current_game],
-            self.personality_profile
-        )
-        
-        # Update AI opponent's learning
-        self.ai_opponent.update_player_pattern(action_data)
-        
-        # Update game state based on actions
-        self._update_game_state(action_data, ai_response)
-        
-        self.db.commit()
+        try:
+            print(f"Processing player action: {action_data}")
+            
+            # Store player action in database
+            db_action = PlayerAction(
+                session_id=self.session_id,
+                game_type=self.current_game,
+                action_type=action_data.get('action_type', 'unknown'),
+                timestamp=action_data.get('timestamp', time.time()),
+                success=action_data.get('success', False),
+                action_data=action_data,
+                context=action_data.get('context', {})
+            )
+            self.db.add(db_action)
+            self.action_count += 1
+            
+            # Update personality analysis
+            await self._update_personality_analysis(action_data)
+            
+            # Generate AI response
+            ai_response = self.ai_opponent.get_action(
+                GameType(self.current_game),
+                self.game_states[self.current_game],
+                self.personality_profile
+            )
+            
+            # Update AI opponent's learning
+            self.ai_opponent.update_player_pattern(action_data)
+            
+            # Update game state based on actions
+            self._update_game_state(action_data, ai_response)
+            
+            self.db.commit()
+            
+            print(f"AI response: {ai_response}")
+            print(f"Updated game state: {self.game_states[self.current_game]}")
+            
+            return {
+                'updated_personality': self.personality_profile.dict() if self.personality_profile else None,
+                'ai_response': ai_response,
+                'game_state': self.game_states[self.current_game],
+                'insights': self._get_current_insights()
+            }
+        except Exception as e:
+            print(f"Error processing player action: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return a basic response even if there's an error
+            return {
+                'error': str(e),
+                'game_state': self.game_states[self.current_game],
+                'ai_response': {'action': 'error_recovery', 'message': 'Error processing action'}
+            }
         
         return {
             'updated_personality': self.personality_profile.dict() if self.personality_profile else None,
@@ -807,13 +885,38 @@ class EnhancedMultiGameSession:
     async def _update_personality_analysis(self, action_data: dict):
         """Update personality analysis with new action"""
         try:
+            print(f"🧠 Updating personality analysis for {self.current_game} action")
+            
             # Create mock action for analysis (adapt this to your action structure)
             mock_actions = {
                 self.current_game: [action_data]  # Simplified - you'll need proper action objects
             }
             
             # Use your existing analyzer
-            self.personality_profile = await multi_game_analyzer.analyze_universal_behavior(mock_actions)
+            try:
+                self.personality_profile = await multi_game_analyzer.analyze_universal_behavior(mock_actions)
+                print(f"✅ Personality analysis successful")
+                print(f"  🏷️ Type: {self.personality_profile.personality_archetype}")
+                print(f"  🎮 Style: {self.personality_profile.playstyle_category}")
+                print(f"  📊 Confidence: {self.personality_profile.confidence_score:.3f}")
+            except Exception as analysis_error:
+                print(f"⚠️ Personality analysis failed: {analysis_error}")
+                # If analysis fails, create a default personality profile
+                if not self.personality_profile:
+                    print(f"⚙️ Creating default personality profile")
+                    self.personality_profile = UnifiedPersonality(
+                        aggression_level=0.5,
+                        risk_tolerance=0.5,
+                        analytical_thinking=0.5,
+                        patience_level=0.5,
+                        precision_focus=0.5,
+                        competitive_drive=0.5,
+                        strategic_thinking=0.5,
+                        personality_archetype="🎮 Classic Gamer",
+                        playstyle_category="📊 Rule-Based Analysis",
+                        confidence_score=0.7,
+                        category_confidence=0.7
+                    )
             
             # Update database personality profile
             personality_db = self.db.query(PersonalityProfile).filter(
@@ -821,8 +924,11 @@ class EnhancedMultiGameSession:
             ).first()
             
             if not personality_db:
+                print(f"🆕 Creating new personality profile in database")
                 personality_db = PersonalityProfile(session_id=self.session_id)
                 self.db.add(personality_db)
+            else:
+                print(f"📝 Updating existing personality profile in database")
             
             # Update personality traits
             personality_db.aggression_level = self.personality_profile.aggression_level
@@ -832,39 +938,113 @@ class EnhancedMultiGameSession:
             personality_db.precision_focus = self.personality_profile.precision_focus
             personality_db.competitive_drive = self.personality_profile.competitive_drive
             personality_db.strategic_thinking = self.personality_profile.strategic_thinking
-            personality_db.total_actions_analyzed += 1
+            
+            # Add archetype and playstyle if available
+            if hasattr(self.personality_profile, 'personality_archetype'):
+                personality_db.personality_archetype = self.personality_profile.personality_archetype
+            if hasattr(self.personality_profile, 'playstyle_category'):
+                personality_db.playstyle_category = self.personality_profile.playstyle_category
+                
+            # Increment action count
+            if personality_db.total_actions_analyzed is None:
+                personality_db.total_actions_analyzed = 1
+            else:
+                personality_db.total_actions_analyzed += 1
             
         except Exception as e:
-            print(f"Personality analysis error: {e}")
+            print(f"❌ Personality analysis error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _update_game_state(self, player_action: dict, ai_action: dict):
         """Update game state based on player and AI actions"""
-        if self.current_game == "fighting":
-            # Fighting game state updates
-            if player_action.get('action_type') == 'attack' and player_action.get('success'):
-                self.game_states['fighting']['ai_health'] -= 10
-            if ai_action.get('action') in ['aggressive_combo', 'quick_jab'] and random.random() > 0.5:
-                self.game_states['fighting']['player_health'] -= 8
-                
-        elif self.current_game == "badminton":
-            # Badminton state updates
-            rally_count = self.game_states['badminton'].get('rally_count', 0)
-            self.game_states['badminton']['rally_count'] = rally_count + 1
+        try:
+            print(f"Updating game state for {self.current_game}")
+            print(f"Player action: {player_action.get('action_type')}")
+            print(f"AI action: {ai_action}")
             
-            # Simple scoring logic
-            if rally_count > 5 and random.random() > 0.7:
-                if random.random() > 0.5:
-                    self.game_states['badminton']['score_player'] += 1
-                else:
-                    self.game_states['badminton']['score_ai'] += 1
-                self.game_states['badminton']['rally_count'] = 0
+            # Get context data if available
+            context = player_action.get('context', {})
+            
+            if self.current_game == "fighting":
+                # Fighting game state updates
+                # Use context data if available
+                if context:
+                    self.game_states['fighting']['player_health'] = context.get('player_health', self.game_states['fighting']['player_health'])
+                    self.game_states['fighting']['ai_health'] = context.get('ai_health', self.game_states['fighting']['ai_health'])
                 
-        elif self.current_game == "racing":
-            # Racing state updates
-            current_speed = self.game_states['racing'].get('speed', 60)
-            if ai_action.get('speed_adjustment'):
-                new_speed = current_speed + ai_action['speed_adjustment']
-                self.game_states['racing']['speed'] = max(20, min(120, new_speed))
+                # Apply damage based on actions
+                if player_action.get('action_type') == 'attack' and player_action.get('success', False):
+                    damage = player_action.get('damage_dealt', 10)
+                    self.game_states['fighting']['ai_health'] = max(0, self.game_states['fighting']['ai_health'] - damage)
+                    print(f"Player dealt {damage} damage. AI health: {self.game_states['fighting']['ai_health']}")
+                
+                if ai_action.get('action') in ['aggressive_combo', 'quick_jab', 'attack']:
+                    hit_chance = 0.7 if ai_action.get('action') == 'aggressive_combo' else 0.5
+                    if random.random() < hit_chance:
+                        damage = ai_action.get('damage', 8)
+                        self.game_states['fighting']['player_health'] = max(0, self.game_states['fighting']['player_health'] - damage)
+                        print(f"AI dealt {damage} damage. Player health: {self.game_states['fighting']['player_health']}")
+                
+            elif self.current_game == "badminton":
+                # Badminton state updates
+                # Use context data if available
+                if context:
+                    self.game_states['badminton']['score_player'] = context.get('score_player', self.game_states['badminton'].get('score_player', 0))
+                    self.game_states['badminton']['score_ai'] = context.get('score_ai', self.game_states['badminton'].get('score_ai', 0))
+                    self.game_states['badminton']['rally_count'] = context.get('rally_count', self.game_states['badminton'].get('rally_count', 0))
+                
+                # Update rally count
+                rally_count = self.game_states['badminton'].get('rally_count', 0)
+                self.game_states['badminton']['rally_count'] = rally_count + 1
+                
+                # Scoring logic based on shot type and success
+                if player_action.get('shot_type') == 'smash' and player_action.get('success', False):
+                    if random.random() > 0.3:  # 70% chance to score with a successful smash
+                        self.game_states['badminton']['score_player'] = self.game_states['badminton'].get('score_player', 0) + 1
+                        self.game_states['badminton']['rally_count'] = 0
+                        print(f"Player scored with a smash! Score: {self.game_states['badminton'].get('score_player', 0)}-{self.game_states['badminton'].get('score_ai', 0)}")
+                elif rally_count > 5 and random.random() > 0.7:
+                    if random.random() > 0.5:
+                        self.game_states['badminton']['score_player'] = self.game_states['badminton'].get('score_player', 0) + 1
+                    else:
+                        self.game_states['badminton']['score_ai'] = self.game_states['badminton'].get('score_ai', 0) + 1
+                    self.game_states['badminton']['rally_count'] = 0
+                    print(f"Score after rally: {self.game_states['badminton'].get('score_player', 0)}-{self.game_states['badminton'].get('score_ai', 0)}")
+                
+            elif self.current_game == "racing":
+                # Racing state updates
+                # Use context data if available
+                if context:
+                    self.game_states['racing']['lap'] = context.get('lap', self.game_states['racing'].get('lap', 1))
+                    self.game_states['racing']['position'] = context.get('position', self.game_states['racing'].get('position', 2))
+                    self.game_states['racing']['speed'] = context.get('speed', self.game_states['racing'].get('speed', 60))
+                
+                # Update speed based on AI action
+                current_speed = self.game_states['racing'].get('speed', 60)
+                if ai_action.get('speed_adjustment'):
+                    new_speed = current_speed + ai_action['speed_adjustment']
+                    self.game_states['racing']['speed'] = max(20, min(120, new_speed))
+                    print(f"Speed adjusted to {self.game_states['racing']['speed']}")
+                
+                # Handle overtaking
+                if player_action.get('action_type') == 'overtake' and player_action.get('success', False):
+                    current_position = self.game_states['racing'].get('position', 2)
+                    if current_position > 1:  # Can't go higher than position 1
+                        self.game_states['racing']['position'] = current_position - 1
+                        print(f"Player overtook! New position: {self.game_states['racing']['position']}")
+                
+                # Handle crashes
+                if player_action.get('crash_occurred', False):
+                    self.game_states['racing']['speed'] = max(20, self.game_states['racing']['speed'] - 30)
+                    self.game_states['racing']['position'] = min(8, self.game_states['racing']['position'] + 2)
+                    print(f"Player crashed! New position: {self.game_states['racing']['position']}, Speed: {self.game_states['racing']['speed']}")
+            
+            print(f"Updated game state: {self.game_states[self.current_game]}")
+        except Exception as e:
+            print(f"Error updating game state: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _get_current_insights(self):
         """Get current cross-game insights"""
@@ -893,6 +1073,7 @@ async def enhanced_multi_game_websocket(websocket: WebSocket, session_id: str, d
         
         while True:
             data = await websocket.receive_json()
+            print(f"Received WebSocket message: {data}")
             
             if data["type"] == "game_switch":
                 result = await session.switch_game(data["new_game"])
@@ -904,8 +1085,12 @@ async def enhanced_multi_game_websocket(websocket: WebSocket, session_id: str, d
             elif data["type"] == "player_action":
                 result = await session.process_player_action(data["action"])
                 await websocket.send_json({
-                    "type": "analysis_update",
-                    "data": result
+                    "type": "game_update",
+                    "game_state": result.get('game_state'),
+                    "ai_response": result.get('ai_response'),
+                    "personality_profile": result.get('updated_personality'),
+                    "insights": result.get('insights'),
+                    "error": result.get('error')
                 })
                 
             elif data["type"] == "get_status":
@@ -922,7 +1107,13 @@ async def enhanced_multi_game_websocket(websocket: WebSocket, session_id: str, d
                 
     except Exception as e:
         print(f"WebSocket error: {e}")
-        await websocket.close()
+        import traceback
+        traceback.print_exc()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            # Connection might already be closed
+            pass
         
 # Include API version routing
 from fastapi import APIRouter
