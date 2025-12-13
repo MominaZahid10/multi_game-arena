@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Backend Test</title>
+</head>
+<body>
+    <h1>Testing Direct Backend Connection</h1>
+    <button id="testBtn">Test POST Request</button>
+    <pre id="output"></pre>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            output.textContent = 'Testing...\n';
+            
+            const startTime = Date.now();
+            
+            try {
+                output.textContent += `Sending POST to http://127.0.0.1:8000/api/v1/games/fighting/action?session_id=test-123\n`;
+                
+                const response = await fetch('http://127.0.0.1:8000/api/v1/games/fighting/action?session_id=test-123', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action_data: {
+                            action_type: 'test',
+                            timestamp: Date.now(),
+                            position: [0, 0],
+                            context: {
+                                player_health: 100,
+                                ai_health: 100,
+                                distance_to_opponent: 5
+                            }
+                        }
+                    })
+                });
+                
+                const elapsed = Date.now() - startTime;
+                output.textContent += `✅ Response received in ${elapsed}ms\n`;
+                output.textContent += `Status: ${response.status} ${response.statusText}\n`;
+                output.textContent += `Headers:\n${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}\n\n`;
+                
+                const data = await response.json();
+                output.textContent += `Body:\n${JSON.stringify(data, null, 2)}\n`;
+                
+            } catch (error) {
+                const elapsed = Date.now() - startTime;
+                output.textContent += `❌ ERROR after ${elapsed}ms:\n${error.message}\n${error.stack}\n`;
+            }
+        });
+        
+        // Auto-run test on load
+        setTimeout(() => document.getElementById('testBtn').click(), 500);
+    </script>
+</body>
+</html>

@@ -1,6 +1,12 @@
-// Enhanced multi-game WebSocket hook with state sync and robust reconnection
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { GameType } from '../lib/types';
+// hooks/useMultiGameWebSocket.ts - FIXED VERSION
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+interface WebSocketMessage {
+  type: string;
+  data?: any;
+  message?: string;
+  timestamp?: string;
+}
 
 export interface GameAction {
   action_type: string;
@@ -29,170 +35,183 @@ export interface GameState {
   };
 }
 
-export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', enabled: boolean = true) => {
+export const useMultiGameWebSocket = (sessionId: string, enabled: boolean = true) => {
   const [connected, setConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState<any>(null);
+  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState>({});
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectAttempts = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
-  const possiblePorts = [8000, 8001, 8002];
-
-  const cleanup = () => {
-    if (ws.current) {
-      try { ws.current.close(); } catch {}
-      ws.current = null;
-    }
-    setConnected(false);
-  };
-
   const connect = useCallback(() => {
-    if (!enabled) return;
-    if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) return;
+    if (!enabled || !sessionId) {
+      console.log('❌ WebSocket disabled or no session ID');
+      return;
+    }
 
-    let portIdx = 0;
+    try {
+      // Close existing connection
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
 
-    const tryConnect = (port: number) => {
-      try {
-        const url = `ws://localhost:${port}/ws/multi-game/${sessionId}`;
-        const sock = new WebSocket(url);
-        ws.current = sock;
+      // FIX: Use correct WebSocket URL format
+      const wsUrl = `ws://localhost:8000/ws/multi-game/${sessionId}`;
+      console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
+      
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-        const timeout = setTimeout(() => {
-          try { sock.close(); } catch {}
-        }, 4000);
+      ws.onopen = () => {
+        console.log('✅ WebSocket connected successfully');
+        setConnected(true);
+        setConnectionError(null);
+        reconnectAttemptsRef.current = 0;
+      };
 
-        sock.onopen = () => {
-          clearTimeout(timeout);
-          setConnected(true);
-          setConnectionError(null);
-          reconnectAttempts.current = 0;
-          // Notify backend session start
-          sock.send(JSON.stringify({
-            type: 'connection_established',
-            session_id: sessionId,
-            timestamp: Date.now(),
-          }));
-        };
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('📨 WebSocket message received:', message.type);
+          setLastMessage(message);
 
-        sock.onmessage = (evt) => {
-          try {
-            const msg = JSON.parse(evt.data);
-            setLastMessage(msg);
-            console.log('Received WebSocket message:', msg);
+          // Handle specific message types
+          if (message.type === 'game_update' && message.data) {
+            // Dispatch custom event for components to listen to
+            window.dispatchEvent(new CustomEvent('gameUpdate', { 
+              detail: message.data 
+            }));
             
-            // Handle different message types from backend
-            if (msg?.type === 'game_state_update' && msg?.game) {
-              setGameState((prev) => ({ ...prev, [msg.game]: msg.state }));
-            } else if (msg?.type === 'game_update') {
-              // Handle game updates with AI response
-              if (msg.personality_profile) {
-                console.log('Received personality update:', msg.personality_profile);
-              }
-              // Update game state if available
-              if (msg.game_state) {
-                const gameType = msg.current_game || 'fighting';
-                setGameState((prev) => ({ ...prev, [gameType]: msg.game_state }));
-              }
-              // Log AI response
-              if (msg.ai_response) {
-                console.log('AI response:', msg.ai_response);
-              }
-              // Log any errors
-              if (msg.error) {
-                console.error('Error in game update:', msg.error);
-              }
-            } else if (msg?.type === 'session_status') {
-              // Handle session status updates
-              console.log('Session status:', msg);
-              if (msg.current_game) {
-                // If we have game state in the insights, use it
-                if (msg.insights && msg.insights.game_state) {
-                  setGameState((prev) => ({ ...prev, [msg.current_game]: msg.insights.game_state }));
-                }
-              }
+            // Update game state if available
+            if (message.game_state) {
+              const gameType = message.current_game || 'fighting';
+              setGameState((prev) => ({ ...prev, [gameType]: message.game_state }));
             }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+          } else if (message.type === 'game_state_update' && message.game) {
+            setGameState((prev) => ({ ...prev, [message.game]: message.state }));
+          } else if (message.type === 'session_status') {
+            console.log('📊 Session status:', message);
+            if (message.current_game && message.insights?.game_state) {
+              setGameState((prev) => ({ ...prev, [message.current_game]: message.insights.game_state }));
+            }
           }
-        };
+        } catch (error) {
+          console.error('❌ Failed to parse WebSocket message:', error);
+        }
+      };
 
-        sock.onerror = () => {
-          setConnectionError('Connection error occurred');
-        };
+      ws.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setConnectionError('WebSocket connection error');
+        setConnected(false);
+      };
 
-        sock.onclose = () => {
-          setConnected(false);
-          if (!enabled) return;
-          if (reconnectAttempts.current < maxReconnectAttempts) {
-            reconnectAttempts.current += 1;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-            setTimeout(() => {
-              portIdx = (portIdx + 1) % possiblePorts.length;
-              tryConnect(possiblePorts[portIdx]);
-            }, delay);
-          } else {
-            setConnectionError('Max reconnection attempts reached');
-          }
-        };
-      } catch (e) {
-        // Try next port
-        portIdx = (portIdx + 1) % possiblePorts.length;
-        tryConnect(possiblePorts[portIdx]);
+      ws.onclose = () => {
+        console.log('🔌 WebSocket disconnected');
+        setConnected(false);
+        wsRef.current = null;
+
+        // Auto-reconnect logic
+        if (enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          reconnectAttemptsRef.current++;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
+          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        }
+      };
+    } catch (error) {
+      console.error('❌ Failed to create WebSocket:', error);
+      setConnectionError('Failed to create WebSocket connection');
+    }
+  }, [sessionId, enabled]);
+
+  // Connect on mount and when enabled changes
+  useEffect(() => {
+    if (enabled) {
+      connect();
+    }
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
-
-    tryConnect(possiblePorts[portIdx]);
-  }, [enabled, sessionId]);
-
-  useEffect(() => {
-    if (enabled) connect();
-    return () => cleanup();
   }, [connect, enabled]);
 
-  const sendRaw = (payload: any) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(payload));
+  const sendGameAction = useCallback((gameType: string, actionData: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'player_action',
+        action: {
+          game_type: gameType,
+          ...actionData,
+          timestamp: Date.now()
+        }
+      };
+      
+      console.log('📤 Sending game action:', message.type, gameType);
+      wsRef.current.send(JSON.stringify(message));
+      return true;
+    } else {
+      console.warn('⚠️ WebSocket not connected, cannot send action');
+      return false;
+    }
+  }, []);
+
+  const sendGameStateUpdate = useCallback((game: string, state: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'game_state_update',
+        game,
+        session_id: sessionId,
+        state,
+        timestamp: Date.now(),
+      };
+      wsRef.current.send(JSON.stringify(message));
       return true;
     }
     return false;
-  };
-
-  const sendGameAction = useCallback((game: string, action: GameAction) => {
-    return sendRaw({
-      type: 'player_action',  // Changed from 'game_action' to match backend expectation
-      action: {
-        game_type: game,
-        session_id: sessionId,
-        ...action,
-        timestamp: action.timestamp ?? Date.now(),
-        context: action.context || {}
-      }
-    });
   }, [sessionId]);
 
-  const sendGameStateUpdate = useCallback((game: string, state: any) => {
-    return sendRaw({
-      type: 'game_state_update',
-      game,
-      session_id: sessionId,
-      state,
-      timestamp: Date.now(),
-    });
-  }, [sessionId]);
-
-  const switchGame = useCallback((newGame: GameType) => {
-    return sendRaw({ type: 'game_switch', new_game: newGame, session_id: sessionId, timestamp: Date.now() });
-  }, [sessionId]);
+  const switchGame = useCallback((newGame: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const message = {
+        type: 'game_switch',
+        new_game: newGame
+      };
+      
+      console.log('🎮 Switching game:', newGame);
+      wsRef.current.send(JSON.stringify(message));
+      return true;
+    }
+    return false;
+  }, []);
 
   const getStatus = useCallback(() => {
-    return sendRaw({ type: 'get_status', session_id: sessionId, timestamp: Date.now() });
-  }, [sessionId]);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'ping' }));
+      return true;
+    }
+    return false;
+  }, []);
 
   const disconnect = useCallback(() => {
-    cleanup();
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setConnected(false);
   }, []);
 
   return {
@@ -204,9 +223,9 @@ export const useMultiGameWebSocket = (sessionId: string = 'test-session-123', en
     sendGameStateUpdate,
     switchGame,
     getStatus,
-    reconnectAttempts: reconnectAttempts.current,
+    reconnectAttempts: reconnectAttemptsRef.current,
     maxReconnectAttempts,
-    socket: ws.current,
+    socket: wsRef.current,
     disconnect,
     connect,
   };

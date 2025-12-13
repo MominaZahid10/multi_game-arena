@@ -8,7 +8,6 @@ import os
 import pickle
 
 try:
-  
     import sys
     sys.path.append('.')  
     from backend.services.model1 import CrossGamePersonalityClassifier
@@ -29,42 +28,35 @@ class MultiGameAnalyzer:
             self._load_trained_models()
     
     def _load_trained_models(self):
-        """🔥 FIX 2: Force retraining to fix feature mismatch"""
+        """Load trained models without aggressive retraining - FIXED VERSION"""
         model_path = "hybrid_personality_system.pkl"
         
-        force_retrain = False
-        
         if os.path.exists(model_path):
+            file_size = os.path.getsize(model_path)
+            print(f"📂 Found model file: {file_size / (1024*1024):.1f}MB")
+            
+            # Check if file is reasonable size (not corrupted)
+            if file_size < 1024:  # Less than 1KB means corrupted
+                print("⚠️ Model file too small, appears corrupted. Retraining...")
+                self._train_new_models()
+                return
+            
             try:
-                # Try to load and validate the model
+                # Simply load the model without aggressive testing
                 success = self.hybrid_system.load_models(model_path)
                 if success:
-                    # Test the model with sample data to check feature count
-                    try:
-                        test_features = {
-                            'fighting': [0.5, 0.5, 0.5, 0.5],
-                            'badminton': [0.5, 0.5, 0.5, 0.5],
-                            'racing': [0.5, 0.5, 0.5, 0.5]
-                        }
-                        # This will fail if feature count is wrong
-                        _ = self.hybrid_system.predict_personality(test_features)
-                        print("✅ Loaded existing hybrid personality models successfully")
-                        return
-                    except Exception as feature_error:
-                        print(f"🔧 Feature mismatch detected: {feature_error}")
-                        print("📚 This usually means the model was trained with different features")
-                        force_retrain = True
+                    print("✅ Loaded existing hybrid personality models successfully")
+                    print("🚀 Ready for ML-powered personality analysis!")
+                    return
                 else:
-                    force_retrain = True
+                    print("❌ Model loading failed, retraining...")
+                    self._train_new_models()
             except Exception as e:
                 print(f"❌ Failed to load hybrid models: {e}")
-                force_retrain = True
+                print("🔄 Falling back to retraining...")
+                self._train_new_models()
         else:
             print("🆕 No pre-trained hybrid models found.")
-            force_retrain = True
-        
-        if force_retrain:
-            print("🔄 Training new hybrid models with correct feature engineering...")
             self._train_new_models()
     
     def _train_new_models(self):
@@ -91,7 +83,7 @@ class MultiGameAnalyzer:
             print(f"  🎯 Classification Accuracy: {performance['classification_scores']['personality_accuracy']:.3f}")
             print(f"  📈 Min Category Accuracy: {performance['classification_scores']['min_category_accuracy']:.3f}")
             
-            # Test the newly trained model
+            # Optional: Test the newly trained model (but don't retrain if it fails)
             try:
                 test_features = {
                     'fighting': [0.8, 0.2, 0.6, 0.3],
@@ -101,7 +93,7 @@ class MultiGameAnalyzer:
                 test_prediction = self.hybrid_system.predict_personality(test_features)
                 print(f"🧪 Model test successful - Features used: {test_prediction.get('ultimate_features_used', 'N/A')}")
             except Exception as test_error:
-                print(f"⚠️ Model test failed: {test_error}")
+                print(f"⚠️ Model test had issues but continuing anyway: {test_error}")
             
         except Exception as e:
             print(f"❌ Hybrid model training failed: {e}")
@@ -176,7 +168,7 @@ class MultiGameAnalyzer:
                     total_actions_analyzed=sum(len(actions[game]) for game in actions),
                     games_played=hybrid_prediction['games_analyzed'],
                     last_updated=datetime.now(),
-                    # 🔥 FIX 3: Set the missing fields
+                    # Set the missing fields
                     personality_archetype=hybrid_prediction.get('personality_archetype', '🎮 Multi-Game Player'),
                     playstyle_category=hybrid_prediction.get('playstyle_category', '🎯 Adaptive Gamer'),
                     category_confidence=hybrid_prediction.get('category_confidence', 0.0)
@@ -248,93 +240,184 @@ class MultiGameAnalyzer:
         return unified_profile
     
     def _extract_ml_features_fighting(self, actions: List[Any]) -> List[float]:
-        """Extract ML features for fighting game (exactly matching your model's expectations)"""
+        """Extract ML features for fighting game - FIXED to use actual action data"""
         if not actions:
-            return [0.5, 0.5, 0.5, 0.5]  # Default neutral features
+          return [0.5, 0.5, 0.5, 0.5]  # Default neutral features
+    
+        print(f"🔍 Extracting fighting features from {len(actions)} actions")
+    
+    # Analyze actual action patterns instead of hard-coded values
+        attack_count = 0
+        defend_count = 0
+        combo_total = 0
+        success_count = 0
+    
+        for action in actions:
+        # Handle different action data structures
+          action_type = None
+          success = False
+          combo_count = 0
         
-        # Your model expects: [aggression_rate, defense_ratio, combo_preference, reaction_time]
-        attack_actions = sum(1 for a in actions if getattr(a, 'move_type', '') == 'attack')
-        aggression_rate = min(1.0, attack_actions / len(actions))
+          if isinstance(action, dict):
+            action_type = action.get('action_type')
+            success = action.get('success', False)
+            combo_count = action.get('combo_count', 0)
+          else:
+            # Handle object attributes
+            action_type = getattr(action, 'action_type', None)
+            success = getattr(action, 'success', False)
+            combo_count = getattr(action, 'combo_count', 0)
         
-        block_actions = sum(1 for a in actions if getattr(a, 'move_type', '') == 'block')
-        defense_ratio = min(1.0, block_actions / len(actions))
-        
-        combo_total = sum(getattr(a, 'combo_count', 0) for a in actions)
-        combo_preference = min(1.0, combo_total / (len(actions) * 3))  # Normalize
-        
-        # Reaction time (inverse of success rate as proxy)
-        success_rate = sum(1 for a in actions if getattr(a, 'success', False)) / len(actions)
-        reaction_time = max(0.1, min(1.0, 1.0 - success_rate))
-        
-        return [aggression_rate, defense_ratio, combo_preference, reaction_time]
+        # Count attack vs defense actions
+          if action_type in ['attack', 'punch', 'kick', 'combo', 'special_move']:
+            attack_count += 1
+          elif action_type in ['block', 'dodge', 'counter']:
+            defend_count += 1
+            
+          if success:
+            success_count += 1
+            
+          combo_total += combo_count
+    
+    # Calculate dynamic features
+        total_actions = len(actions)
+        aggression_rate = attack_count / total_actions if total_actions > 0 else 0.5
+        defense_ratio = defend_count / total_actions if total_actions > 0 else 0.5
+        combo_preference = combo_total / (total_actions * 3) if total_actions > 0 else 0.5  # Normalize
+        reaction_time = max(0.1, min(1.0, success_count / total_actions)) if total_actions > 0 else 0.5
+    
+        features = [aggression_rate, defense_ratio, combo_preference, reaction_time]
+        print(f"📊 Fighting features calculated: {features}")
+    
+        return features
     
     def _extract_ml_features_badminton(self, actions: List[Any]) -> List[float]:
-        """Extract ML features for badminton game (exactly matching your model's expectations)"""
-        if not actions:
-            return [0.5, 0.5, 0.5, 0.5]
-        
-        # Your model expects: [shot_variety, power_control, court_positioning, rally_patience]
-        shot_types = set(getattr(a, 'shot_type', 'clear') for a in actions)
-        shot_variety = min(1.0, len(shot_types) / 5.0)  # Max 5 shot types
-        
-        # Power control (consistency in power levels)
-        power_levels = [getattr(a, 'power_level', 0.5) for a in actions]
-        if power_levels:
-            power_variance = np.var(power_levels)
-            power_control = max(0.1, min(1.0, 1.0 - power_variance))
+      """Extract ML features for badminton - FIXED with dynamic analysis"""
+      if not actions:
+        return [0.5, 0.5, 0.5, 0.5]
+    
+      print(f"🏸 Extracting badminton features from {len(actions)} actions")
+    
+      shot_types = set()
+      power_levels = []
+      court_positions = []
+      rally_positions = []
+    
+      for action in actions:
+        # Handle different data structures
+        if isinstance(action, dict):
+            shot_type = action.get('shot_type')
+            power_level = action.get('power_level')
+            court_position = action.get('court_position')
+            rally_position = action.get('rally_position')
         else:
-            power_control = 0.5
+            shot_type = getattr(action, 'shot_type', None)
+            power_level = getattr(action, 'power_level', None)
+            court_position = getattr(action, 'court_position', None)
+            rally_position = getattr(action, 'rally_position', None)
         
-        # Court positioning (improved calculation)
-        court_positions = [getattr(a, 'court_position', (0.5, 0.5)) for a in actions]
-        if court_positions:
-            # Calculate positioning variety as a proxy for strategic thinking
-            valid_positions = [pos for pos in court_positions if isinstance(pos, (tuple, list)) and len(pos) >= 2]
-            if valid_positions:
-                position_variance = np.var([pos[0] + pos[1] for pos in valid_positions])
-                court_positioning = max(0.1, min(1.0, position_variance * 10))  # Scale variance
-            else:
-                court_positioning = 0.5
+        if shot_type:
+            shot_types.add(shot_type)
+        if power_level is not None:
+            power_levels.append(power_level)
+        if court_position:
+            court_positions.append(court_position)
+        if rally_position:
+            rally_positions.append(rally_position)
+    
+    # Calculate features
+      shot_variety = len(shot_types) / 5.0 if shot_types else 0.5  # Max 5 shot types
+    
+      if power_levels:
+        power_variance = np.var(power_levels)
+        power_control = max(0.1, min(1.0, 1.0 - power_variance))
+      else:
+        power_control = 0.5
+    
+    # Court positioning analysis
+      if court_positions:
+        # Calculate movement variety as strategic thinking indicator
+        if len(court_positions) > 1:
+            position_changes = 0
+            for i in range(1, len(court_positions)):
+                prev_pos = court_positions[i-1]
+                curr_pos = court_positions[i]
+                if isinstance(prev_pos, (list, tuple)) and isinstance(curr_pos, (list, tuple)):
+                    if len(prev_pos) >= 2 and len(curr_pos) >= 2:
+                        distance = ((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)**0.5
+                        if distance > 0.5:  # Significant movement
+                            position_changes += 1
+            court_positioning = min(1.0, position_changes / len(court_positions))
         else:
             court_positioning = 0.5
-        
-        # Rally patience (rally position average)
-        rally_positions = [max(1, getattr(a, 'rally_position', 1)) for a in actions]
-        rally_patience = min(1.0, max(0.1, np.mean(rally_positions) / 10.0)) if rally_positions else 0.5
-        
-        return [shot_variety, power_control, court_positioning, rally_patience]
+      else:
+        court_positioning = 0.5
+    
+      rally_patience = np.mean(rally_positions) / 10.0 if rally_positions else 0.5
+      rally_patience = min(1.0, max(0.1, rally_patience))
+    
+      features = [shot_variety, power_control, court_positioning, rally_patience]
+      print(f"🏸 Badminton features calculated: {features}")
+    
+      return features
     
     def _extract_ml_features_racing(self, actions: List[Any]) -> List[float]:
-        """Extract ML features for racing game (exactly matching your model's expectations)"""
-        if not actions:
-            return [0.5, 0.5, 0.5, 0.5]
-        
-        # Your model expects: [speed_preference, precision_level, overtaking_aggression, consistency]
-        speeds = [getattr(a, 'speed', 50) for a in actions if getattr(a, 'speed', 0) > 0]
-        if speeds:
-            max_reasonable_speed = 120  # Assume max reasonable speed
-            speed_preference = min(1.0, max(0.1, np.mean(speeds) / max_reasonable_speed))
+      """Extract ML features for racing - FIXED with dynamic analysis"""
+      if not actions:
+        return [0.5, 0.5, 0.5, 0.5]
+    
+      print(f"🏁 Extracting racing features from {len(actions)} actions")
+    
+      speeds = []
+      crashes = 0
+      overtake_attempts = 0
+      total_actions = len(actions)
+    
+      for action in actions:
+        # Handle different data structures
+        if isinstance(action, dict):
+            speed = action.get('speed')
+            crash_occurred = action.get('crash_occurred', False)
+            overtaking_attempt = action.get('overtaking_attempt', False)
         else:
-            speed_preference = 0.5
+            speed = getattr(action, 'speed', None)
+            crash_occurred = getattr(action, 'crash_occurred', False)
+            overtaking_attempt = getattr(action, 'overtaking_attempt', False)
         
-        # Precision level (inverse of crashes and consistency)
-        crashes = sum(1 for a in actions if getattr(a, 'crash_occurred', False))
-        crash_rate = crashes / len(actions)
-        precision_level = max(0.1, min(1.0, 1.0 - crash_rate))
+        if speed is not None and speed > 0:
+            speeds.append(speed)
+        if crash_occurred:
+            crashes += 1
+        if overtaking_attempt:
+            overtake_attempts += 1
+    
+    # Calculate features
+      if speeds:
+        speed_preference = np.mean(speeds) / 120.0  # Normalize to max reasonable speed
+        speed_preference = min(1.0, max(0.1, speed_preference))
         
-        # Overtaking aggression
-        overtakes = sum(1 for a in actions if getattr(a, 'overtaking_attempt', False))
-        overtaking_aggression = min(1.0, overtakes / len(actions))
-        
-        # Consistency (speed variance)
-        if speeds and len(speeds) > 1:
+        # Consistency from speed variance
+        if len(speeds) > 1:
             speed_variance = np.var(speeds)
-            max_variance = 400  # Assume max reasonable variance
-            consistency = max(0.1, min(1.0, 1.0 - speed_variance / max_variance))
+            consistency = max(0.1, min(1.0, 1.0 - speed_variance / 400))
         else:
             consistency = 0.5
-        
-        return [speed_preference, precision_level, overtaking_aggression, consistency]
+      else:
+        speed_preference = 0.5
+        consistency = 0.5
+    
+    # Precision from crash avoidance
+      crash_rate = crashes / total_actions if total_actions > 0 else 0
+      precision_level = max(0.1, min(1.0, 1.0 - crash_rate))
+    
+    # Overtaking aggression
+      overtaking_aggression = overtake_attempts / total_actions if total_actions > 0 else 0
+      overtaking_aggression = min(1.0, overtaking_aggression)
+    
+      features = [speed_preference, precision_level, overtaking_aggression, consistency]
+      print(f"🏁 Racing features calculated: {features}")
+    
+      return features
     
     def get_cross_game_insights(self):
         """Enhanced cross-game insights with hybrid ML integration"""

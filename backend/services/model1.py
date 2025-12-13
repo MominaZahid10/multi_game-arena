@@ -326,10 +326,7 @@ class CrossGamePersonalityClassifier:
         
         ultimate_features = np.hstack([all_features, engineered_features])
         
-        print(f"Feature Engineering Complete:")
-        print(f"  - Original features: {all_features.shape[1]}")
-        print(f"  - Engineered features: {engineered_features.shape[1]}")
-        print(f"  - Total features: {ultimate_features.shape[1]}")
+        # Removed verbose logging - was printing on every prediction
         
         return ultimate_features
     

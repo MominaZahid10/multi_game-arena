@@ -11,8 +11,10 @@ else:
 
 engine=create_engine(DATABASE_URL,
               pool_pre_ping=True,
-              pool_size=3600,
-              echo=settings.DEBUG
+              pool_size=10,
+              max_overflow=20,
+              pool_timeout=30,
+              echo=False  # Disable SQL logging for performance
               )
 
 SessionLocal=sessionmaker(autocommit=False,autoflush=False,bind=engine)

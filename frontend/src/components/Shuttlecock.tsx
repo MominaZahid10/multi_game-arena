@@ -1,26 +1,66 @@
+// src/components/Shuttlecock.tsx
 import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Sphere, Cone } from '@react-three/drei';
 import * as THREE from 'three';
 
 type ShotType = 'drop_shot' | 'smash' | 'clear' | 'net_shot' | null;
-const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor, autoReturn = false }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number; spin?: [number, number, number] } | null; idleAnchor?: [number, number, number]; autoReturn?: boolean }) => {
-  const shuttleRef = useRef<THREE.Group>(null);
-  const [position, setPosition] = useState<[number, number, number]>([0, 2.5, 0]);
-  const [velocity, setVelocity] = useState<[number, number, number]>([0, 0, 0]);
+const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHit = null, idleAnchor, autoReturn = false, startPosition = [0, 2.5, 0] }: { paused?: boolean; aiShot?: ShotType; onPositionChange?: (pos: [number, number, number]) => void; playerHit?: { dir: [number, number, number]; power: number; spin?: [number, number, number] } | null; idleAnchor?: [number, number, number]; autoReturn?: boolean; startPosition?: [number, number, number] }) => {
+  
+  // ====================================================================
+  // FIX: All state variables must be initialized first.
+  // Renamed initialPos -> startPosition to avoid R3F conflicts.
+  // ====================================================================
+  const [shuttlecockPosition, setShuttlecockPosition] = useState<[number, number, number]>(startPosition);
+  const [shuttlecockVelocity, setShuttlecockVelocity] = useState<[number, number, number]>([0, 0, 0]);
+  const [shuttlecockRotation, setShuttlecockRotation] = useState<[number, number, number]>([0, 0, 0]);
   const [isInPlay, setIsInPlay] = useState(false);
-  const [rotation, setRotation] = useState<[number, number, number]>([0, 0, 0]);
   const [spin, setSpin] = useState<[number, number, number]>([0, 0, 0]);
   const [lastHitTime, setLastHitTime] = useState(0);
   const [lastLanding, setLastLanding] = useState<{pos:[number,number,number]}|null>(null);
+  
+  function safeArray3(val: any, fallback: [number, number, number] = [0,0,0], label = ''): [number, number, number] {
+    if (Array.isArray(val) && val.length === 3 && val.every(v => typeof v === 'number' && !isNaN(v))) return val as [number, number, number];
+    if (val && typeof val === 'object') {
+      const x = typeof val.x === 'number' ? val.x : fallback[0];
+      const y = typeof val.y === 'number' ? val.y : fallback[1];
+      const z = typeof val.z === 'number' ? val.z : fallback[2];
+      return [x, y, z];
+    }
+    if (label) console.error('Invalid 3D array for', label, val, 'using fallback', fallback);
+    return fallback;
+  }
+  
+  // Defensive normalization for idleAnchor and playerHit
+  const normIdleAnchor = idleAnchor ? safeArray3(idleAnchor, [0,0,0], 'Shuttlecock.idleAnchor') : [0,0,0];
+  let normPlayerHit = null;
+  if (playerHit && typeof playerHit === 'object') {
+    normPlayerHit = {
+      ...playerHit,
+      dir: safeArray3(playerHit.dir, [0,0,0], 'Shuttlecock.playerHit.dir'),
+      spin: playerHit.spin ? safeArray3(playerHit.spin, [0,0,0], 'Shuttlecock.playerHit.spin') : undefined
+    };
+  }
+  
+  // Use state variables for norm references:
+  const normPosition = safeArray3(shuttlecockPosition, startPosition, 'Shuttlecock.position');
+  const normRotation = safeArray3(shuttlecockRotation, [0,0,0], 'Shuttlecock.rotation');
+  const normVelocity = safeArray3(shuttlecockVelocity, [0,0,0], 'Shuttlecock.velocity');
+  
+  try {
+    if (import.meta.env.DEV) console.debug('Shuttlecock props:', JSON.stringify({ paused, aiShot, onPositionChange: !!onPositionChange, normPlayerHit, normIdleAnchor, autoReturn, normPosition, normRotation, normVelocity }));
+  } catch (e) {
+    if (import.meta.env.DEV) console.debug('Shuttlecock props (stringify failed):', { paused, aiShot, onPositionChange, normPlayerHit, normIdleAnchor, autoReturn, normPosition, normRotation, normVelocity }, e);
+  }
+  const shuttleRef = useRef<THREE.Group>(null);
 
   useFrame((state, delta) => {
     if (paused) return;
     if (shuttleRef.current && isInPlay) {
       // Enhanced physics simulation
-      const [x, y, z] = position;
-      const [vx, vy, vz] = velocity;
-      const [rx, ry, rz] = rotation;
+      const [x, y, z] = shuttlecockPosition;
+      const [vx, vy, vz] = shuttlecockVelocity;
+      const [rx, ry, rz] = shuttlecockRotation;
       const [ox, oy, oz] = spin;
 
       // Physical constants
@@ -58,38 +98,38 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       }
       
       const nextPos: [number, number, number] = [newX, newY, newZ];
-      setPosition(nextPos);
-      setVelocity([newV.x, newV.y, newV.z]);
+      setShuttlecockPosition(nextPos);
+      setShuttlecockVelocity([newV.x, newV.y, newV.z]);
       onPositionChange?.(nextPos);
 
       // Rotation follows velocity direction and spin
       const rotSpeed = newV.length() * 2.5;
-      setRotation([
+      setShuttlecockRotation([
         rx + rotSpeed * delta + oy * 0.02,
         ry + (newV.x * delta * 1.5),
         rz + (newV.z * delta * 1.5)
       ]);
 
-      shuttleRef.current.rotation.set(...rotation);
+      shuttleRef.current.rotation.set(...shuttlecockRotation);
       
       // Net collision detection
       if (Math.abs(x) < 0.2 && y < 2.5 && y > 0.5) {
         const bounce = new THREE.Vector3(-v.x * 0.3, Math.abs(v.y) * 0.5, v.z * 0.8);
-        setVelocity([bounce.x, bounce.y, bounce.z]);
+        setShuttlecockVelocity([bounce.x, bounce.y, bounce.z]);
         setLastHitTime(state.clock.elapsedTime);
       }
       
       // Court boundary detection
       if (Math.abs(x) > 7 || Math.abs(z) > 5) {
-        setVelocity([vx * -0.4, Math.abs(vy) * 0.3, vz * -0.4]);
+        setShuttlecockVelocity([vx * -0.4, Math.abs(vy) * 0.3, vz * -0.4]);
       }
       
       // Reset if hits ground or goes too far
       if (Math.abs(newX) > 10 || Math.abs(newZ) > 8 || (newY <= 0.12 && Math.abs(newV.y) < 0.5)) {
         setLastLanding({ pos: [newX, 0.12, newZ] });
         setTimeout(() => {
-          setVelocity([0, 0, 0]);
-          setRotation([0, 0, 0]);
+          setShuttlecockVelocity([0, 0, 0]);
+          setShuttlecockRotation([0, 0, 0]);
           setSpin([0, 0, 0]);
           setIsInPlay(false);
         }, 400);
@@ -97,10 +137,10 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     } else if (shuttleRef.current) {
       // Idle near player's racket when not in play
       if (idleAnchor) {
-        const [ax, ay, az] = idleAnchor;
+        const [ax, ay, az] = normIdleAnchor;
         const floatY = 0.95 + Math.sin(state.clock.elapsedTime * 0.8) * 0.04;
         const anchorPos: [number, number, number] = [ax + (ax > 0 ? -0.2 : 0.2), floatY, az];
-        setPosition(anchorPos);
+        setShuttlecockPosition(anchorPos);
         onPositionChange?.(anchorPos);
       } else {
         const floatY = 2.0 + Math.sin(state.clock.elapsedTime * 0.8) * 0.08;
@@ -115,9 +155,9 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
     if (!autoReturn) return;
     if (!isInPlay && lastLanding && lastLanding.pos[0] > 0.6) {
       const t = setTimeout(() => {
-        setPosition([lastLanding.pos[0], 0.9, lastLanding.pos[2]]);
+        setShuttlecockPosition([lastLanding.pos[0], 0.9, lastLanding.pos[2]]);
         setIsInPlay(true);
-        setVelocity([-3 - Math.random()*2, 5, (Math.random()-0.5)*2]);
+        setShuttlecockVelocity([-3 - Math.random()*2, 5, (Math.random()-0.5)*2]);
         setLastHitTime(Date.now());
       }, 700);
       return () => clearTimeout(t);
@@ -131,20 +171,20 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
   useEffect(() => {
     if (!playerHit) return;
     setIsInPlay(true);
-    const [dx, dy, dz] = playerHit.dir;
-    const power = Math.max(0.2, Math.min(1.5, playerHit.power));
+    const [dx, dy, dz] = normPlayerHit.dir;
+    const power = Math.max(0.2, Math.min(1.5, normPlayerHit.power));
     const vx = dx * power * 12;
     const vy = Math.max(2.8, dy * power * 6);
     const vz = dz * power * 2;
-    setVelocity([vx, vy, vz]);
-    setSpin(playerHit.spin || [0, 0, 0]);
+    setShuttlecockVelocity([vx, vy, vz]);
+    setSpin(normPlayerHit.spin || [0, 0, 0]);
     setLastHitTime(Date.now());
   }, [playerHit]);
 
   // Keep aligned to idle anchor when provided
   useEffect(() => {
     if (!isInPlay && idleAnchor) {
-      setPosition([idleAnchor[0] + (idleAnchor[0] > 0 ? -0.2 : 0.2), 0.95, idleAnchor[2]]);
+      setShuttlecockPosition([normIdleAnchor[0] + (normIdleAnchor[0] > 0 ? -0.2 : 0.2), 0.95, normIdleAnchor[2]]);
     }
   }, [idleAnchor, isInPlay]);
 
@@ -172,7 +212,7 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
             const power = 0.3 + chargePower * 0.7;
             const angle = Math.random() * Math.PI / 6 - Math.PI / 12; // ±15 degrees
             
-            setVelocity([
+            setShuttlecockVelocity([
               (Math.random() - 0.5) * 6 * power,
               (2 + power * 4) * Math.cos(angle),
               (Math.random() - 0.5) * 4 * power
@@ -193,7 +233,7 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
   }, [isInPlay]);
 
   return (
-    <group ref={shuttleRef} position={position}>
+    <group ref={shuttleRef} position={normPosition} rotation={normRotation}>
       {/* Enhanced shuttlecock head */}
       <Sphere args={[0.06]} position={[0, 0, 0]}>
         <meshPhongMaterial 
@@ -236,12 +276,12 @@ const Shuttlecock = ({ paused = false, aiShot = null, onPositionChange, playerHi
       })}
       
       {/* Speed trail when moving fast */}
-      {isInPlay && velocity && Math.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2) > 2 && (
+      {isInPlay && normVelocity && Math.sqrt(normVelocity[0]**2 + normVelocity[1]**2 + normVelocity[2]**2) > 2 && (
         <>
           <Sphere args={[0.12]} position={[0, 0, 0]}>
             <meshBasicMaterial color="#4ECDC4" transparent opacity={0.2} />
           </Sphere>
-          <Sphere args={[0.08]} position={[-velocity[0] * 0.1, -velocity[1] * 0.1, -velocity[2] * 0.1]}>
+          <Sphere args={[0.08]} position={[-normVelocity[0] * 0.1, -normVelocity[1] * 0.1, -normVelocity[2] * 0.1]}>
             <meshBasicMaterial color="#A855F7" transparent opacity={0.15} />
           </Sphere>
         </>
