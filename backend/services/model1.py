@@ -11,7 +11,7 @@ from sklearn.ensemble import VotingClassifier, AdaBoostClassifier
 from sklearn.svm import SVC
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.neighbors import KNeighborsClassifier
-import pickle
+import joblib
 import json
 from typing import Dict, List, Tuple
 import warnings
@@ -20,13 +20,13 @@ warnings.filterwarnings('ignore')
 class CrossGamePersonalityClassifier:
    
     def __init__(self):
-        self.fighting_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
-        self.badminton_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
-        self.racing_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42))
-        self.meta_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=150, random_state=42))
+        self.fighting_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=1))
+        self.badminton_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=1))
+        self.racing_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=1))
+        self.meta_regressor = MultiOutputRegressor(RandomForestRegressor(n_estimators=150, random_state=42, n_jobs=1))
         
         self.personality_classifier = VotingClassifier([
-            ('rf', RandomForestClassifier(n_estimators=300, max_depth=20, min_samples_split=3, random_state=42)),
+            ('rf', RandomForestClassifier(n_estimators=300, max_depth=20, min_samples_split=3, random_state=42, n_jobs=1)),
             ('et', ExtraTreesClassifier(n_estimators=300, max_depth=18, min_samples_split=3, random_state=42)),
             ('gb', GradientBoostingClassifier(n_estimators=200, learning_rate=0.08, max_depth=10, random_state=42)),
             ('ada', AdaBoostClassifier(n_estimators=150, learning_rate=0.1, random_state=42)),
@@ -36,7 +36,7 @@ class CrossGamePersonalityClassifier:
         ], voting='soft')
         
         self.playstyle_classifier = VotingClassifier([
-            ('rf', RandomForestClassifier(n_estimators=250, max_depth=15, random_state=42)),
+            ('rf', RandomForestClassifier(n_estimators=250, max_depth=15, random_state=42, n_jobs=1)),
             ('et', ExtraTreesClassifier(n_estimators=250, max_depth=15, random_state=42)),
             ('gb', GradientBoostingClassifier(n_estimators=180, learning_rate=0.1, random_state=42)),
             ('svm', SVC(kernel='rbf', C=5, probability=True, random_state=42)),
@@ -81,7 +81,7 @@ class CrossGamePersonalityClassifier:
             "🔄 Pattern Seeker"           
         ]
     
-    def generate_training_data(self, n_samples=6000):
+    def generate_training_data(self, n_samples=10000):
         print(f" Generating {n_samples} samples with EXTREME personality separation...")
         
         archetypes = {
@@ -102,9 +102,9 @@ class CrossGamePersonalityClassifier:
             'strategic_analyst': {
                 'category_id': 1,
                 'playstyle_id': 1,
-                'weight': 0.14,
+                'weight': 0.16,
                 'traits': {
-                    'aggression_level': lambda: np.clip(np.random.normal(0.15, 0.05), 0.05, 0.25),  
+                    'aggression_level': lambda: np.clip(np.random.normal(0.12, 0.04), 0.05, 0.20),  
                     'risk_tolerance': lambda: np.clip(np.random.normal(0.20, 0.05), 0.1, 0.3),      
                     'patience_level': lambda: np.clip(np.random.normal(0.95, 0.04), 0.85, 1.0),     
                     'precision_focus': lambda: np.clip(np.random.normal(0.95, 0.04), 0.85, 1.0),    
@@ -146,7 +146,7 @@ class CrossGamePersonalityClassifier:
                 'playstyle_id': 4,
                 'weight': 0.13,
                 'traits': {
-                    'aggression_level': lambda: np.clip(np.random.normal(0.25, 0.06), 0.15, 0.35),
+                    'aggression_level': lambda: np.clip(np.random.normal(0.45, 0.08), 0.35, 0.60),
                     'risk_tolerance': lambda: np.clip(np.random.normal(0.10, 0.04), 0.05, 0.18),    
                     'patience_level': lambda: np.clip(np.random.normal(0.85, 0.08), 0.7, 1.0),
                     'precision_focus': lambda: np.clip(np.random.normal(0.98, 0.02), 0.9, 1.0),      
@@ -186,7 +186,7 @@ class CrossGamePersonalityClassifier:
             'victory_seeker': {  
                 'category_id': 7,
                 'playstyle_id': 3,
-                'weight': 0.08, 
+                'weight': 0.04, 
                 'traits': {
                     'aggression_level': lambda: np.clip(np.random.normal(0.75, 0.08), 0.6, 0.9),
                     'risk_tolerance': lambda: np.clip(np.random.normal(0.70, 0.08), 0.55, 0.85),
@@ -210,7 +210,13 @@ class CrossGamePersonalityClassifier:
         
        
         archetype_names = list(archetypes.keys())
-        archetype_weights = [archetypes[name]['weight'] for name in archetype_names]
+        archetype_weights = np.array(
+                 [archetypes[name]['weight'] for name in archetype_names],
+                 dtype=np.float64
+)
+
+        archetype_weights /= archetype_weights.sum()
+
         
         for i in range(n_samples):
             archetype_name = np.random.choice(archetype_names, p=archetype_weights)
@@ -224,10 +230,10 @@ class CrossGamePersonalityClassifier:
                     personality[trait] = np.clip(np.random.uniform(0.4, 0.6), 0.1, 1.0)
             
             fighting_features = [
-                personality['aggression_level'] + np.random.normal(0, 0.02),   
-                (1 - personality['aggression_level']) + np.random.normal(0, 0.02),
-                personality['risk_tolerance'] * 0.95 + np.random.normal(0, 0.02),
-                (1 - personality['analytical_thinking']) + np.random.normal(0, 0.015)
+                 personality['aggression_level'] + np.random.normal(0, 0.02),   # aggression_rate
+                 personality['patience_level'] + np.random.normal(0, 0.02),     # defense_ratio (NOT inverted!)
+                 personality['risk_tolerance'] + np.random.normal(0, 0.02),     # combo_preference (NOT scaled!)
+                 personality['precision_focus'] + np.random.normal(0, 0.015)    # reaction_time (NOT inverted!)
             ]
             
             badminton_features = [
@@ -574,15 +580,15 @@ class CrossGamePersonalityClassifier:
             'is_trained': self.is_trained
         }
         
-        with open(filepath, 'wb') as f:
-            pickle.dump(model_data, f)
+        if True: # Optimized save
+            joblib.dump(model_data, filepath, compress=3)
         
         print(f"✓ ULTIMATE hybrid models saved to {filepath}")
     
     def load_models(self, filepath: str):
         try:
-            with open(filepath, 'rb') as f:
-                model_data = pickle.load(f)
+            if True: # Optimized load
+                model_data = joblib.load(filepath)
             
             self.fighting_regressor = model_data['fighting_regressor']
             self.badminton_regressor = model_data['badminton_regressor']
@@ -613,7 +619,7 @@ if __name__ == "__main__":
     
     ultimate_classifier = CrossGamePersonalityClassifier()
     
-    training_data = ultimate_classifier.generate_training_data(n_samples=6000)
+    training_data = ultimate_classifier.generate_training_data(n_samples=10000)
     
     performance = ultimate_classifier.train_models(training_data)
     
