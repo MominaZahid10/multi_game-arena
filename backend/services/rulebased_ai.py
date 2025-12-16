@@ -1,8 +1,8 @@
-# Enhanced rulebased_ai.py - ML-POWERED VERSION
-
+import os
 import numpy as np
 import time
 from typing import Dict, Any, Tuple
+from pathlib import Path
 from backend.dbmodels.personality import GameType, UnifiedPersonality
 
 class MLPoweredAIOpponent:
@@ -18,21 +18,17 @@ class MLPoweredAIOpponent:
         self.strategy_effectiveness = {}
         self.ml_model_loaded = False  # Track if ML is actually working
         
-        # ✅ OPTIMIZED: Reduced ring buffer from 5 to 2 for less overhead
-        self.last_player_positions = []  # Ring buffer of last 2 positions
+        self.last_player_positions = []  
         self.player_velocity = {'x': 0, 'z': 0}
         self.last_update_time = 0
         
-        # ✅ SERVER-SIDE AI POSITION TRACKING (fallback for stale client data)
-        self.server_ai_position = {'x': 4.5, 'z': 0}  # Initialize at spawn
-        self.last_known_target = {'x': 4.5, 'z': 0}   # Last target sent
+        self.server_ai_position = {'x': 4.5, 'z': 0}  
+        self.last_known_target = {'x': 4.5, 'z': 0}  
         
-        # ✅ CACHE: Store ML predictions to reduce computation
         self._cached_archetype = None
         self._cache_time = 0
-        self._cache_duration = 0.2  # ✅ REDUCED to 200ms for responsive AI
+        self._cache_duration = 2.0  # Reduced from 10s to 2s
         
-        # ✅ ML-derived action mappings per archetype (more aggressive overall)
         self.archetype_strategies = {
             "🔥 Aggressive Dominator": {"punch": 0.35, "kick": 0.30, "combo_attack": 0.30, "block": 0.05},
             "🧠 Strategic Analyst": {"punch": 0.30, "kick": 0.30, "block": 0.25, "combo_attack": 0.15},
@@ -44,40 +40,66 @@ class MLPoweredAIOpponent:
             "🏆 Victory Seeker": {"punch": 0.35, "kick": 0.30, "combo_attack": 0.25, "block": 0.10}
         }
         
-        # Load ML model
+        self._load_ml_model()
+
+    def _load_ml_model(self):
+        """Load ML model with proper path resolution"""
         try:
             from backend.services.model1 import CrossGamePersonalityClassifier
             self.ml_classifier = CrossGamePersonalityClassifier()
-            self.ml_classifier.load_models("hybrid_personality_system.pkl")
-            self.ml_model_loaded = True
-            print("✅ ML-powered AI initialized with trained models")
+            
+            # Try multiple possible paths
+            possible_paths = [
+                "/app/hybrid_personality_system.pkl",  # Docker container path
+                "hybrid_personality_system.pkl",       # Local development
+                "./hybrid_personality_system.pkl",
+                str(Path(__file__).parent.parent.parent / "hybrid_personality_system.pkl")
+            ]
+            
+            model_loaded = False
+            for path in possible_paths:
+                if os.path.exists(path):
+                    print(f"🔍 Found model at: {path}")
+                    try:
+                        success = self.ml_classifier.load_models(path)
+                        if success:
+                            self.ml_model_loaded = True
+                            model_loaded = True
+                            print(f"✅ ML model loaded successfully from {path}")
+                            print(f"   is_trained: {self.ml_classifier.is_trained}")
+                            break
+                    except Exception as e:
+                        print(f"❌ Failed to load from {path}: {e}")
+            
+            if not model_loaded:
+                print("⚠️ Model file not found in any expected location")
+                print(f"   Searched: {possible_paths}")
+                print(f"   Current dir: {os.getcwd()}")
+                print(f"   Files in /app: {os.listdir('/app') if os.path.exists('/app') else 'N/A'}")
+                self.ml_model_loaded = False
+                
         except Exception as e:
             self.ml_model_loaded = False
-            print(f"⚠️ ML unavailable, using rule-based AI: {e}")
+            print(f"❌ ML initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _update_player_tracking(self, player_x: float, player_z: float):
         """Track player movement for prediction"""
         current_time = time.time()
         
-        # Add current position
         self.last_player_positions.append({'x': player_x, 'z': player_z, 't': current_time})
         
-        # ✅ OPTIMIZED: Keep only last 2 positions
         if len(self.last_player_positions) > 2:
             self.last_player_positions.pop(0)
         
-        # Calculate velocity if we have enough data
         if len(self.last_player_positions) >= 2:
             p1 = self.last_player_positions[-2]
             p2 = self.last_player_positions[-1]
-            dt = max(p2['t'] - p1['t'], 0.01)  # Prevent division by zero
+            dt = max(p2['t'] - p1['t'], 0.01) 
             
-            # Calculate raw velocity
             vx = (p2['x'] - p1['x']) / dt
             vz = (p2['z'] - p1['z']) / dt
-            
-            # [FIX] Clamp velocity to realistic player maximum (approx 5.0 units/sec)
-            # This prevents the AI from predicting crazy jumps due to lag/jitter
             max_speed = 6.0
             current_speed = np.sqrt(vx**2 + vz**2)
             if current_speed > max_speed:
@@ -96,13 +118,11 @@ class MLPoweredAIOpponent:
         
         current = self.last_player_positions[-1]
         
-        # ✅ OPTIMIZED: Reduced lookahead to 0.1s for tighter tracking
         safe_lookahead = 0.1
         
         predicted_x = current['x'] + self.player_velocity['x'] * safe_lookahead
         predicted_z = current['z'] + self.player_velocity['z'] * safe_lookahead
         
-        # Limit prediction distance to 1.0 units
         dx = predicted_x - current['x']
         dz = predicted_z - current['z']
         dist = np.sqrt(dx*dx + dz*dz)
@@ -111,7 +131,6 @@ class MLPoweredAIOpponent:
             predicted_x = current['x'] + dx * scale
             predicted_z = current['z'] + dz * scale
         
-        # Clamp to arena bounds
         predicted_x = np.clip(predicted_x, -6, 6)
         predicted_z = np.clip(predicted_z, -4, 4)
         
@@ -124,16 +143,13 @@ class MLPoweredAIOpponent:
         """
         import math
         
-        # Optimal fighting distance: 1.8-2.5 units
         OPTIMAL_MIN = 1.8
         OPTIMAL_MAX = 2.5
         
         if OPTIMAL_MIN <= distance <= OPTIMAL_MAX:
-            # Perfect distance - hold position
             return ai_x, ai_z
         
         elif distance < OPTIMAL_MIN:
-            # Too close - back up slightly
             dx = ai_x - player_x
             dz = ai_z - player_z
             mag = max(0.1, math.sqrt(dx*dx + dz*dz))
@@ -142,7 +158,6 @@ class MLPoweredAIOpponent:
             return target_x, target_z
         
         else:
-            # Too far - move closer (60% of the way)
             target_x = ai_x + (player_x - ai_x) * 0.6
             target_z = ai_z + (player_z - ai_z) * 0.6
             return target_x, target_z
@@ -155,8 +170,7 @@ class MLPoweredAIOpponent:
         """
         current_time = time.time()
         
-        # ✅ Use cache if available (10 second cache to avoid slow ML recomputation)
-        if self._cached_archetype and (current_time - self._cache_time) < 10.0:
+        if self._cached_archetype and (current_time - self._cache_time) < self._cache_duration:
             archetype = self._cached_archetype['archetype']
             confidence = self._cached_archetype['confidence']
             
@@ -165,15 +179,11 @@ class MLPoweredAIOpponent:
                 actions = list(strategy.keys())
                 probs = list(strategy.values())
                 
-                # Distance-based probability adjustments
                 if distance < 2.0:
-                    # Close range = MORE attacks, less blocking
                     probs = [p * 2.0 if a in ['punch', 'kick', 'combo_attack'] else p * 0.3 for a, p in zip(actions, probs)]
                 elif distance < 3.5:
-                    # Medium range = balanced attacks
                     probs = [p * 1.5 if a in ['punch', 'kick'] else p for a, p in zip(actions, probs)]
                 elif distance > 5.0:
-                    # Far range = less combos (out of range)
                     probs = [p * 0.3 if a == 'combo_attack' else p for a, p in zip(actions, probs)]
                 
                 total_prob = sum(probs)
@@ -181,10 +191,8 @@ class MLPoweredAIOpponent:
                 action = np.random.choice(actions, p=probs)
                 return action, archetype, confidence
         
-        # ✅ COMPUTE ML PREDICTION - Model is always loaded at startup
         if self.ml_model_loaded and self.ml_classifier is not None:
             try:
-                # Calculate features from game state
                 player_health = state.get('player_health', 100)
                 ai_health = state.get('ai_health', 100)
                 health_advantage = (ai_health - player_health) / 100.0
@@ -198,33 +206,23 @@ class MLPoweredAIOpponent:
                 
                 fighting_features = [aggression_rate, defense_ratio, combo_preference, reaction_time]
                 game_features = {'fighting': fighting_features}
-                
-                # 🧠 CALL TRAINED ML MODEL
                 ml_result = self.ml_classifier.predict_personality(game_features)
                 
                 archetype = ml_result.get('personality_archetype', '🔥 Aggressive Dominator')
                 confidence = ml_result.get('category_confidence', 0.7)
-                
-                # Cache result for 10 seconds to avoid slow ML recomputation
                 self._cached_archetype = {'archetype': archetype, 'confidence': confidence}
                 self._cache_time = current_time
-                
-                # Recurse to use the cached result with distance adjustments
                 return self._get_ml_predicted_action(state, distance)
                 
             except Exception as e:
                 print(f"⚠️ ML prediction error: {e}")
         
-        # ✅ If ML not loaded yet, use default archetype (still ML-based strategy)
         default_archetype = '🔥 Aggressive Dominator'
         self._cached_archetype = {'archetype': default_archetype, 'confidence': 0.8}
         self._cache_time = current_time
-        
         strategy = self.archetype_strategies[default_archetype]
         actions = list(strategy.keys())
         probs = list(strategy.values())
-        
-        # Distance adjustments
         if distance < 2.0:
             probs = [p * 2.0 if a in ['punch', 'kick', 'combo_attack'] else p * 0.3 for a, p in zip(actions, probs)]
         
@@ -271,15 +269,11 @@ class MLPoweredAIOpponent:
             ai_health = state.get('ai_health', 100)
             player_pos = state.get('player_position', {'x': 0, 'z': 0})
             ai_pos = state.get('ai_position', {'x': 4.5, 'z': 0})
-            
-            # Extract positions
             player_x = player_pos.get('x', 0) if isinstance(player_pos, dict) else player_pos[0]
             player_z = player_pos.get('z', 0) if isinstance(player_pos, dict) else (player_pos[2] if len(player_pos) > 2 else 0)
             
             client_ai_x = ai_pos.get('x', 4.5) if isinstance(ai_pos, dict) else ai_pos[0]
             client_ai_z = ai_pos.get('z', 0) if isinstance(ai_pos, dict) else (ai_pos[2] if len(ai_pos) > 2 else 0)
-            
-            # Use server position if client is stale (stuck at spawn)
             if abs(client_ai_x - 4.5) < 0.1 and abs(client_ai_z) < 0.1:
                 ai_x = self.server_ai_position['x']
                 ai_z = self.server_ai_position['z']
@@ -289,33 +283,19 @@ class MLPoweredAIOpponent:
                 self.server_ai_position['x'] = ai_x
                 self.server_ai_position['z'] = ai_z
             
-            # Recalculate actual distance
             distance = np.sqrt((player_x - ai_x)**2 + (player_z - ai_z)**2)
-            
-            # Round reset detection
             if player_health == 100 and ai_health == 100 and distance > 8:
                 self.server_ai_position = {'x': 4.5, 'z': 0}
                 ai_x, ai_z = 4.5, 0
             
-            # ============================================================================
-            # 🧠 ML ACTION - ALWAYS from trained model, NO FALLBACK
-            # ============================================================================
             ml_action, ml_archetype, ml_confidence = self._get_ml_predicted_action(state, distance)
-            
-            # ACTION is ALWAYS from ML
             action = ml_action
             
-            # ============================================================================
-            # 🎯 POSITIONING BASED ON DISTANCE - Movement strategy
-            # ============================================================================
-            
             if distance < 1.8:
-                # VERY CLOSE - Hold position while attacking
                 target_x = ai_x
                 target_z = ai_z
                 
             elif distance < 3.0:
-                # CLOSE RANGE - Circle around player while attacking
                 dx = player_x - ai_x
                 dz = player_z - ai_z
                 perp_x = -dz / max(0.1, distance)
@@ -325,24 +305,17 @@ class MLPoweredAIOpponent:
                 target_z = ai_z + dz * 0.25 + perp_z * circle
                 
             elif distance < 5.0:
-                # MEDIUM RANGE - Approach aggressively
                 target_x = ai_x + (player_x - ai_x) * 0.6
                 target_z = ai_z + (player_z - ai_z) * 0.6
                 
             else:
-                # FAR - Rush toward player
                 target_x = ai_x + (player_x - ai_x) * 0.75
                 target_z = ai_z + (player_z - ai_z) * 0.75
             
-            # Clamp to arena
             target_x = float(np.clip(target_x, -6, 6))
             target_z = float(np.clip(target_z, -4, 4))
-            
-            # Update server position
             self.server_ai_position['x'] = target_x
             self.server_ai_position['z'] = target_z
-            
-            # Store action for ML features
             self.action_history.append(action)
             if len(self.action_history) > 30:
                 self.action_history.pop(0)
@@ -358,7 +331,6 @@ class MLPoweredAIOpponent:
             
         except Exception as e:
             print(f"❌ ML AI error: {e}")
-            # Even on error, use ML-based action from cache if available
             if self._cached_archetype:
                 archetype = self._cached_archetype['archetype']
                 if archetype in self.archetype_strategies:
@@ -371,7 +343,6 @@ class MLPoweredAIOpponent:
                         "ml_archetype": archetype,
                         "confidence": 0.7
                     }
-            # Last resort - still use archetype strategy
             return {
                 "action": "punch",
                 "position": {"x": 3.0, "y": 0.0, "z": 0.0},
@@ -388,8 +359,6 @@ class MLPoweredAIOpponent:
             
             strategic = personality.strategic_thinking if personality else 0.5
             aggression = personality.aggression_level if personality else 0.5
-            
-            # Aggressive players get more power shots
             if aggression > 0.7:
                 if shuttle_y > 2.0:
                     action = "smash"
@@ -397,14 +366,12 @@ class MLPoweredAIOpponent:
                     action = "net_kill"
                 else:
                     action = "drive"
-            # Strategic players get more placement shots
             elif strategic > 0.7:
                 if rally_count > 10:
                     action = "drop_shot"
                 else:
                     action = "tactical_placement"
             else:
-                # Balanced approach
                 if rally_count > 15:
                     action = "smash"
                 elif shuttle_y < 0.5:
@@ -426,16 +393,10 @@ class MLPoweredAIOpponent:
             
             risk = personality.risk_tolerance if personality else 0.5
             precision = personality.precision_focus if personality else 0.5
-            
-            # Risky players attempt more overtakes
             if position > 1 and abs(player_x - ai_x) < 0.3 and risk > 0.6:
                 return {"action": "overtake", "confidence": 0.85}
-            
-            # Precision players use perfect racing line
             if precision > 0.7:
                 return {"action": "perfect_racing_line", "confidence": 0.90}
-            
-            # Leading position - defensive
             if position == 1:
                 return {"action": "block_overtake", "confidence": 0.85}
             
@@ -444,5 +405,4 @@ class MLPoweredAIOpponent:
             return {"action": "maintain_speed", "confidence": 0.5}
 
 
-# Keep RuleBasedAIOpponent as alias for backward compatibility
 RuleBasedAIOpponent = MLPoweredAIOpponent

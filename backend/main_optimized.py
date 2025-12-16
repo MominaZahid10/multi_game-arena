@@ -1,6 +1,12 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
-from fastapi import FastAPI,HTTPException,Depends,WebSocket,WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+import numpy as np
+ENABLED_GAMES = {
+    "fighting": True,
+    "badminton": True,  
+    "racing": True      
+}
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -47,39 +53,27 @@ app.add_middleware(
     max_age=3600
 )
 
-# Logging middleware disabled to reduce spam
-# @app.middleware("http")
-# async def log_requests(request: Request, call_next):
-#     response = await call_next(request)
-#     return response
-
-# Initialize singletons
-multi_game_analyzer=MultiGameAnalyzer()
-strategy_selector=CrossGameStrategySelector()
-
-# 🚀 CRITICAL: Initialize AI opponent ONCE at startup (not per-request!)
-# This prevents reloading the 1.4GB model file on every request
 global_ai_opponent = MLPoweredAIOpponent()
 print("✅ Global AI opponent initialized (model loaded once)")
 
-# --- OPTIMIZED STATS FUNCTION ---
+multi_game_analyzer = MultiGameAnalyzer(
+    shared_ml_model=global_ai_opponent.ml_classifier if hasattr(global_ai_opponent, 'ml_classifier') else None
+)
+
+strategy_selector = CrossGameStrategySelector()
 def get_session_stats_lightweight(db: Session, session_id: str) -> dict:
     """
     Optimized version that counts rows instead of fetching all objects.
     Prevents event loop blocking on large sessions.
     """
-    # Get session basic info
     session = db.query(GameSession).filter(GameSession.session_id == session_id).first()
     
     if not session:
         return None
-
-    # Use SQL COUNT for speed instead of fetching all rows
     total_actions = db.query(func.count(PlayerAction.id)).filter(
         PlayerAction.session_id == session_id
     ).scalar()
 
-    # Get counts per game type
     game_breakdown = {}
     for game_type in ["fighting", "badminton", "racing"]:
         count = db.query(func.count(PlayerAction.id)).filter(
@@ -88,11 +82,9 @@ def get_session_stats_lightweight(db: Session, session_id: str) -> dict:
         ).scalar()
         
         if count > 0:
-            # Only fetch success rate if needed, using average
-            # This avoids fetching list objects
             game_breakdown[game_type] = {
                 "total_actions": count,
-                "success_rate": 0.5, # Placeholder to save DB time
+                "success_rate": 0.5, 
                 "last_played": datetime.now().isoformat()
             }
 
@@ -113,23 +105,66 @@ def get_session_stats_lightweight(db: Session, session_id: str) -> dict:
 
 @app.on_event("startup")
 async def warmup_model():
-    try:
-        # Warm up ML model silently
-        global_ai_opponent.get_action(
-            GameType.FIGHTING, 
-            {'player_health': 100, 'ai_health': 100, 'distance_to_player': 5.0, 'player_position': {'x': 0, 'z': 0}}, 
-            None
-        )
-    except Exception as e:
-        pass  # Silent fail on warmup
+    """Model is already loaded in global_ai_opponent - warmup not needed"""
+    print("✅ Warmup skipped - model loaded at initialization")
 
 @app.get("/")
 async def root():
     return {"message":"AI Multi-Game Arena API is running", "version":"2.0.0"}
 
+from pydantic import BaseModel
+
+class FightingMLInput(BaseModel):
+    aggression_rate: float
+    defense_ratio: float
+    combo_preference: float
+    reaction_time: float
+
+
+@app.post("/api/v1/ml/fighting/predict")
+def ml_fighting_predict(data: FightingMLInput):
+    try:
+        features = [[
+            data.aggression_rate,
+            data.defense_ratio,
+            data.combo_preference,
+            data.reaction_time
+        ]]
+        if not (hasattr(global_ai_opponent, 'ml_classifier') and global_ai_opponent.ml_classifier):
+            raise HTTPException(status_code=503, detail="ML model not loaded")
+        ml_clf = global_ai_opponent.ml_classifier
+        if not hasattr(ml_clf, 'personality_classifier'):
+            raise HTTPException(status_code=503, detail="Personality classifier not found")
+    
+        game_features = {'fighting': features[0]}
+        result = ml_clf.predict_personality(game_features)
+        # Map archetype name to ID
+        archetype_to_id = {
+            "🔥 Aggressive Dominator": 0,
+            "🧠 Strategic Analyst": 1,
+            "⚡ Risk-Taking Maverick": 2,
+            "🛡️ Defensive Tactician": 3,
+            "🎯 Precision Master": 4,
+            "🌪️ Chaos Creator": 5,
+            "📊 Data-Driven Player": 6,
+            "🏆 Victory Seeker": 7
+        }
+        archetype_name = result.get('personality_archetype', '🔥 Aggressive Dominator')
+        archetype_id = archetype_to_id.get(archetype_name, 0)
+        return {
+            "prediction": archetype_id,
+            "archetype_name": archetype_name,
+            "confidence": result.get('category_confidence', 0.0)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+    
 @app.post("/api/v1/player/analyze-universal")
 async def analyze_universal_player(request: Request, db: Session = Depends(get_db)):
-    # Simply acknowledge for now to prevent blocking - full analysis can be triggered via background tasks in production
     return {"status": "Analysis queued"}
 
 @app.post("/api/v1/games/fighting/action")
@@ -141,7 +176,6 @@ async def process_fighting_action(
     """
     FIXED: Synchronous processing to ensure responses are sent
     """
-    # ✅ MINIMAL LOG: Track request count
     if not hasattr(process_fighting_action, '_req_counter'):
         process_fighting_action._req_counter = 0
     process_fighting_action._req_counter += 1
@@ -150,18 +184,15 @@ async def process_fighting_action(
     try:
         start_time = time.time()
         
-        # Parse Data
         action_data = action_request.get('action_data', action_request)
         context = action_data.get('context', {})
         if not isinstance(context, dict): 
             context = {}
         
-        # Extract positions
         player_pos = action_data.get('position', [0, 0])
         if isinstance(player_pos, dict):
             player_pos = [player_pos.get('x', 0), player_pos.get('z', player_pos.get('y', 0))]
         
-        # ✅ FIXED: Also extract AI position from context
         ai_pos = context.get('ai_position', {'x': 4.5, 'z': 0})
         if isinstance(ai_pos, list):
             ai_pos = {'x': ai_pos[0], 'z': ai_pos[2] if len(ai_pos) > 2 else 0}
@@ -171,22 +202,18 @@ async def process_fighting_action(
             'ai_health': context.get('ai_health', 100),
             'distance_to_player': context.get('distance_to_opponent', 5.0),
             'player_position': {'x': player_pos[0], 'z': player_pos[1] if len(player_pos) > 1 else 0},
-            'ai_position': ai_pos  # ✅ NEW: Include AI position so AI knows where it is
+            'ai_position': ai_pos  
         }
-        
-        # ✅ MINIMAL LOG: Log incoming request (every 5th)
         if should_log:
             print(f"📥 Request #{process_fighting_action._req_counter}: player=({player_pos[0]:.1f},{player_pos[1] if len(player_pos)>1 else 0:.1f}), ai=({ai_pos.get('x',0):.1f},{ai_pos.get('z',0):.1f})")
 
-        # Get AI action using GLOBAL singleton (no model reload!)
-        # ✅ PERF FIX: Wrap blocking DB query in thread to avoid blocking event loop
         def get_personality_sync():
             return db.query(PersonalityProfile).filter(
                 PersonalityProfile.session_id == session_id
             ).first()
         
         p_db = await asyncio.to_thread(get_personality_sync)
-        
+
         p_obj = None
         if p_db:
             p_obj = UnifiedPersonality(
@@ -201,8 +228,6 @@ async def process_fighting_action(
             )
         
         ai_action_result = global_ai_opponent.get_action(GameType.FIGHTING, game_state, p_obj)
-        
-        # Format Response Data
         using_ml = False
         ml_archetype = None
         if isinstance(ai_action_result, dict):
@@ -213,18 +238,13 @@ async def process_fighting_action(
                 'y': float(raw_pos.get('y', 0) if isinstance(raw_pos, dict) else (raw_pos[1] if len(raw_pos)>1 else 0)),
                 'z': float(raw_pos.get('z', 0) if isinstance(raw_pos, dict) else (raw_pos[2] if len(raw_pos)>2 else 0))
             }
-            # ✅ FIX: Extract ML info from AI result
             using_ml = ai_action_result.get('using_ml', False)
             ml_archetype = ai_action_result.get('ml_archetype', None)
         else:
             ai_action_str = ai_action_result
             ai_position = {'x': 4.0, 'y': 0.0, 'z': 0.0}
 
-        # ✅ FIXED: Skip DB save for fighting (causes session conflicts)
-        # Analytics are tracked on the frontend and via quick-analyze endpoint
         stats = {"actions_today": process_fighting_action._req_counter}
-
-        # Build response
         response = {
             "success": True,
             "ai_action": {
@@ -233,8 +253,8 @@ async def process_fighting_action(
                 "timestamp": time.time() * 1000,
                 "confidence": 0.85,
                 "strategy": "adaptive_combat",
-                "using_ml": using_ml,  # ✅ NEW: Include ML flag
-                "ml_archetype": ml_archetype  # ✅ NEW: Include archetype
+                "using_ml": using_ml,  
+                "ml_archetype": ml_archetype 
             },
             "game_state": game_state,
             "session_stats": stats,
@@ -242,7 +262,6 @@ async def process_fighting_action(
             "analytics_updated": True
         }
         
-        # ✅ MINIMAL LOG: Log response (every 5th)
         if should_log:
             elapsed_ms = (time.time() - start_time) * 1000
             print(f"📤 Response #{process_fighting_action._req_counter}: action={ai_action_str}, pos=({ai_position['x']:.1f},{ai_position['z']:.1f}), time={elapsed_ms:.0f}ms")
@@ -262,29 +281,26 @@ async def process_fighting_action(
             "error": str(e)
         }
 
-
 @app.post("/api/v1/games/badminton/action")
 async def process_badminton_action(session_id: str, action_data: dict, db: Session = Depends(get_db)):
+    if not ENABLED_GAMES["badminton"]:
+        raise HTTPException(
+            status_code=503,
+            detail="Badminton pipeline implemented but disabled in current deployment"
+        )
     try:
-        # Use simple thread wrapping for badminton too
         def process_sync():
             payload = action_data.get('action_data', action_data)
-            
             game_state = {
                 'shuttlecock_position': payload.get('context', {}).get('shuttlecock_position', {'x': 0, 'y': 2}),
                 'rally_count': payload.get('context', {}).get('rally_count', 0),
             }
-            
             ai_action = global_ai_opponent.get_action(GameType.BADMINTON, game_state, None)
-            
-            # Simple Target Logic
             shuttle_pos = game_state['shuttlecock_position']
             ai_target = {
                 'x': 5 + (1 if 'smash' in str(ai_action) else -0.5),
                 'z': shuttle_pos.get('y', 0) + 0.5 if isinstance(shuttle_pos, dict) else 0.5
             }
-            
-            # DB Save
             db_action = PlayerAction(
                 session_id=session_id,
                 game_type="badminton",
@@ -295,7 +311,6 @@ async def process_badminton_action(session_id: str, action_data: dict, db: Sessi
             )
             db.add(db_action)
             db.commit()
-            
             return {
                 "success": True,
                 "ai_action": {
@@ -304,7 +319,6 @@ async def process_badminton_action(session_id: str, action_data: dict, db: Sessi
                     "timestamp": time.time() * 1000
                 }
             }
-
         return await asyncio.to_thread(process_sync)
     except Exception as e:
         print(f"Badminton Error: {e}")
@@ -312,27 +326,26 @@ async def process_badminton_action(session_id: str, action_data: dict, db: Sessi
 
 @app.post("/api/v1/games/racing/action")
 async def process_racing_action(session_id: str, action_data: dict, db: Session = Depends(get_db)):
+    if not ENABLED_GAMES["racing"]:
+        raise HTTPException(
+            status_code=503,
+            detail="Racing pipeline implemented but disabled in current deployment"
+        )
     try:
         def process_sync():
             payload = action_data.get('action_data', action_data)
-            
             track_pos = payload.get('position_on_track', [0, 0])
             if isinstance(track_pos, dict): track_pos = [track_pos.get('x', 0), track_pos.get('z', 0)]
-            
             game_state = {
                 'player_position': {'x': track_pos[0], 'z': track_pos[1]},
                 'position': payload.get('context', {}).get('position_in_race', 2)
             }
-            
             ai_action = global_ai_opponent.get_action(GameType.RACING, game_state, None)
-            
-            # AI Position Logic
             ai_position = {
                 'x': track_pos[0] + (1.5 if 'overtake' in str(ai_action) else -0.5),
                 'y': -1.75,
                 'z': track_pos[1] - 3
             }
-            
             db_action = PlayerAction(
                 session_id=session_id,
                 game_type="racing",
@@ -342,7 +355,6 @@ async def process_racing_action(session_id: str, action_data: dict, db: Session 
             )
             db.add(db_action)
             db.commit()
-            
             return {
                 "success": True,
                 "ai_action": {
@@ -351,7 +363,6 @@ async def process_racing_action(session_id: str, action_data: dict, db: Session 
                     "speed": 70 if 'overtake' in str(ai_action) else 60
                 }
             }
-
         return await asyncio.to_thread(process_sync)
     except Exception as e:
         print(f"Racing Error: {e}")
@@ -359,18 +370,25 @@ async def process_racing_action(session_id: str, action_data: dict, db: Session 
 
 @app.get("/api/v1/analytics/{session_id}")
 async def get_session_analytics(session_id: str, db: Session = Depends(get_db)):
-    # Use the lightweight stats function here too
     return await asyncio.to_thread(get_session_stats_lightweight, db, session_id)
 
 @app.get("/api/v1/personality/{session_id}")
 async def get_personality_profile(session_id: str, db: Session = Depends(get_db)):
-    """Get personality profile from database"""
+    """
+    ✅ FIXED: Get REAL personality profile from ML model + database
+    """
     def get_profile_sync():
+        # 1. Get personality from database
         profile = db.query(PersonalityProfile).filter(
             PersonalityProfile.session_id == session_id
         ).first()
         
-        if not profile:
+        # 2. Get recent actions for ML prediction
+        recent_actions = db.query(PlayerAction).filter(
+            PlayerAction.session_id == session_id
+        ).order_by(PlayerAction.timestamp.desc()).limit(50).all()
+        
+        if not profile or not recent_actions:
             return {
                 "status": "no_data",
                 "message": "No personality data yet - keep playing!",
@@ -380,56 +398,121 @@ async def get_personality_profile(session_id: str, db: Session = Depends(get_db)
                     "strategic_thinking": 0.5,
                     "risk_tolerance": 0.5,
                     "precision_focus": 0.5,
-                    "adaptability": 0.5
+                    "adaptability": 0.5,
+                    "competitive_drive": 0.5,
+                    "analytical_thinking": 0.5
                 },
-                "archetype": "Balanced Fighter",
-                "description": "Play more to reveal your personality!"
+                "archetype": "🎮 Balanced Player",
+                "playstyle": "🎯 Adaptive Gamer",
+                "description": "Play more to reveal your personality!",
+                "confidence": 0.3
             }
         
-        # Calculate archetype based on traits
-        aggression = profile.aggression_level or 0.5
-        patience = profile.patience_level or 0.5
-        strategic = profile.strategic_thinking or 0.5
-        risk = profile.risk_tolerance or 0.5
+        # 3. ✅ USE ML MODEL if available
+        ml_prediction = None
+        try:
+            if hasattr(global_ai_opponent, 'ml_classifier') and global_ai_opponent.ml_classifier:
+                ml_clf = global_ai_opponent.ml_classifier
+                
+                # Extract features from recent actions
+                fighting_actions = [a for a in recent_actions if a.game_type == 'fighting']
+                badminton_actions = [a for a in recent_actions if a.game_type == 'badminton']
+                racing_actions = [a for a in recent_actions if a.game_type == 'racing']
+                
+                game_features = {}
+                
+                # Fighting features
+                if fighting_actions:
+                    game_features['fighting'] = extract_fighting_features(fighting_actions)
+                
+                # Badminton features  
+                if badminton_actions:
+                    game_features['badminton'] = extract_badminton_features(badminton_actions)
+                
+                # Racing features
+                if racing_actions:
+                    game_features['racing'] = extract_racing_features(racing_actions)
+                
+                # Get ML prediction
+                if game_features:
+                    ml_prediction = ml_clf.predict_personality(game_features)
+                    print(f"✅ ML Prediction: {ml_prediction.get('personality_archetype')}")
+        except Exception as e:
+            print(f"⚠️ ML prediction failed: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # Determine archetype
-        if aggression > 0.7:
-            archetype = "Aggressive Brawler" if risk > 0.6 else "Calculated Striker"
-        elif patience > 0.7:
-            archetype = "Patient Counter-Attacker" if strategic > 0.5 else "Defensive Turtle"
-        elif strategic > 0.7:
-            archetype = "Strategic Mastermind"
-        elif risk > 0.7:
-            archetype = "Risk-Taking Gambler"
+        # 4. ✅ USE ML RESULTS if available, otherwise fall back to DB
+        if ml_prediction:
+            personality_scores = ml_prediction['personality_scores']
+            archetype = ml_prediction.get('personality_archetype', '🎮 Multi-Game Player')
+            playstyle = ml_prediction.get('playstyle_category', '🎯 Adaptive Gamer')
+            confidence = ml_prediction.get('confidence_score', 0.7)
+            
+            return {
+                "status": "success",
+                "personality": {
+                    "aggression": personality_scores['aggression_level'],
+                    "patience": personality_scores['patience_level'],
+                    "strategic_thinking": personality_scores['strategic_thinking'],
+                    "risk_tolerance": personality_scores['risk_tolerance'],
+                    "precision_focus": personality_scores['precision_focus'],
+                    "adaptability": personality_scores.get('adaptability', 0.5),
+                    "competitive_drive": personality_scores['competitive_drive'],
+                    "analytical_thinking": personality_scores['analytical_thinking']
+                },
+                "raw_scores": personality_scores,
+                "archetype": archetype,
+                "personality_type": archetype,
+                "playstyle": playstyle,
+                "description": f"You are a {archetype} with {int(personality_scores['aggression_level']*100)}% aggression and {int(personality_scores['patience_level']*100)}% patience.",
+                "confidence": confidence,
+                "ml_powered": True,
+                "actions_analyzed": len(recent_actions)
+            }
         else:
-            archetype = "Balanced Fighter"
-        
-        return {
-            "status": "success",
-            "personality": {
-                "aggression": aggression,
-                "patience": patience,
-                "strategic_thinking": strategic,
-                "risk_tolerance": risk,
-                "precision_focus": profile.precision_focus or 0.5,
-                "adaptability": profile.adaptability or 0.5,
-                "competitive_drive": profile.competitive_drive or 0.5,
-                "analytical_thinking": profile.analytical_thinking or 0.5
-            },
-            "archetype": archetype,
-            "personality_type": archetype,
-            "description": f"You are a {archetype} with {aggression*100:.0f}% aggression and {patience*100:.0f}% patience.",
-            "raw_scores": {
-                "aggression_level": aggression,
-                "patience_level": patience,
-                "strategic_thinking": strategic,
-                "risk_tolerance": risk
+            # Fallback to database values
+            aggression = profile.aggression_level or 0.5
+            patience = profile.patience_level or 0.5
+            strategic = profile.strategic_thinking or 0.5
+            risk = profile.risk_tolerance or 0.5
+            
+            # Use DB archetype if available
+            archetype = profile.personality_archetype or "🎮 Balanced Player"
+            playstyle = profile.playstyle_category or "🎯 Adaptive Gamer"
+            
+            return {
+                "status": "success",
+                "personality": {
+                    "aggression": aggression,
+                    "patience": patience,
+                    "strategic_thinking": strategic,
+                    "risk_tolerance": risk,
+                    "precision_focus": profile.precision_focus or 0.5,
+                    "adaptability": profile.adaptability or 0.5,
+                    "competitive_drive": profile.competitive_drive or 0.5,
+                    "analytical_thinking": profile.analytical_thinking or 0.5
+                },
+                "archetype": archetype,
+                "personality_type": archetype,
+                "playstyle": playstyle,
+                "description": f"You are a {archetype} with {aggression*100:.0f}% aggression and {patience*100:.0f}% patience.",
+                "raw_scores": {
+                    "aggression_level": aggression,
+                    "patience_level": patience,
+                    "strategic_thinking": strategic,
+                    "risk_tolerance": risk,
+                    "precision_focus": profile.precision_focus or 0.5,
+                    "competitive_drive": profile.competitive_drive or 0.5,
+                    "analytical_thinking": profile.analytical_thinking or 0.5,
+                    "adaptability": profile.adaptability or 0.5
+                },
+                "confidence": profile.overall_confidence or 0.5,
+                "ml_powered": False,
+                "actions_analyzed": len(recent_actions)
             }
-        }
     
     return await asyncio.to_thread(get_profile_sync)
-
-
 # ============================================================================
 # 🧠 QUICK PERSONALITY ANALYSIS - Every 10 actions
 # ============================================================================
@@ -494,14 +577,118 @@ def extract_racing_features(actions):
 @app.post("/api/v1/player/quick-analyze")
 async def quick_personality_analysis(session_id: str, db: Session = Depends(get_db)):
     """
-    🧠 QUICK PERSONALITY ANALYSIS - Returns immediately, analysis happens in background
+    ✅ FIXED: Actually run personality analysis using ML model
     """
-    # ✅ ULTRA-FAST: Return immediately - personality analysis is cached in AI opponent
-    # The ML model already updates personality via the fighting action requests
-    return {
-        "status": "acknowledged",
-        "message": "Personality analysis runs via AI opponent cache"
-    }
+    def analyze_sync():
+        try:
+            # Get recent actions
+            recent_actions = db.query(PlayerAction).filter(
+                PlayerAction.session_id == session_id
+            ).order_by(PlayerAction.timestamp.desc()).limit(100).all()
+            
+            if len(recent_actions) < 10:
+                return {
+                    "status": "insufficient_data",
+                    "message": f"Need {10 - len(recent_actions)} more actions for analysis",
+                    "actions_count": len(recent_actions)
+                }
+            
+            # Use ML model for analysis
+            if hasattr(global_ai_opponent, 'ml_classifier') and global_ai_opponent.ml_classifier:
+                ml_clf = global_ai_opponent.ml_classifier
+                
+                # Extract features from recent actions
+                fighting_actions = [a for a in recent_actions if a.game_type == 'fighting']
+                badminton_actions = [a for a in recent_actions if a.game_type == 'badminton']
+                racing_actions = [a for a in recent_actions if a.game_type == 'racing']
+                
+                game_features = {}
+                
+                if fighting_actions:
+                    game_features['fighting'] = extract_fighting_features(fighting_actions)
+                
+                if badminton_actions:
+                    game_features['badminton'] = extract_badminton_features(badminton_actions)
+                
+                if racing_actions:
+                    game_features['racing'] = extract_racing_features(racing_actions)
+                
+                if not game_features:
+                    return {
+                        "status": "no_features",
+                        "message": "No valid game features extracted"
+                    }
+                
+                # Get ML prediction
+                ml_prediction = ml_clf.predict_personality(game_features)
+                personality_scores = ml_prediction['personality_scores']
+                
+                # Update database with new analysis
+                profile = db.query(PersonalityProfile).filter(
+                    PersonalityProfile.session_id == session_id
+                ).first()
+                
+                if not profile:
+                    profile = PersonalityProfile(session_id=session_id)
+                    db.add(profile)
+                
+                # --- FIX: Explicitly cast numpy types to Python float ---
+                profile.aggression_level = float(personality_scores['aggression_level'])
+                profile.risk_tolerance = float(personality_scores['risk_tolerance'])
+                profile.analytical_thinking = float(personality_scores['analytical_thinking'])
+                profile.patience_level = float(personality_scores['patience_level'])
+                profile.precision_focus = float(personality_scores['precision_focus'])
+                profile.competitive_drive = float(personality_scores['competitive_drive'])
+                profile.strategic_thinking = float(personality_scores['strategic_thinking'])
+                profile.adaptability = float(np.mean([
+                    personality_scores['strategic_thinking'],
+                    personality_scores['analytical_thinking']
+                ]))
+                # Update archetype and playstyle
+                profile.personality_archetype = ml_prediction.get('personality_archetype', '🎮 Multi-Game Player')
+                profile.playstyle_category = ml_prediction.get('playstyle_category', '🎯 Adaptive Gamer')
+                profile.category_confidence = float(ml_prediction.get('category_confidence', 0.7))
+                profile.overall_confidence = float(ml_prediction.get('confidence_score', 0.7))
+                profile.total_actions_analyzed = len(recent_actions)
+                db.commit()
+                
+                print(f"✅ Personality updated: {profile.personality_archetype}")
+                
+                return {
+                    "status": "success",
+                    "message": "Personality analysis complete",
+                    "personality_type": profile.personality_archetype,
+                    "playstyle": profile.playstyle_category,
+                    "confidence": profile.overall_confidence,
+                    "actions_analyzed": len(recent_actions),
+                    "traits": {
+                        "aggression_level": profile.aggression_level,
+                        "risk_tolerance": profile.risk_tolerance,
+                        "patience_level": profile.patience_level,
+                        "strategic_thinking": profile.strategic_thinking,
+                        "precision_focus": profile.precision_focus,
+                        "competitive_drive": profile.competitive_drive,
+                        "analytical_thinking": profile.analytical_thinking,
+                        "adaptability": profile.adaptability
+                    }
+                }
+            else:
+                return {
+                    "status": "ml_unavailable",
+                    "message": "ML model not loaded - using rule-based analysis",
+                    "actions_count": len(recent_actions)
+                }
+                
+        except Exception as e:
+            print(f"❌ Analysis error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    return await asyncio.to_thread(analyze_sync)
 
 
 if __name__ == "__main__":

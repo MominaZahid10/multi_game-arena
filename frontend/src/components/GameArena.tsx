@@ -202,7 +202,7 @@ const FighterCharacter = ({
         }
       }
 
-      const cooldownPassed = (now - lastAiActionTime.current) > 700;
+      const cooldownPassed = (now - lastAiActionTime.current) > 400;  // 700ms → 400ms
       if (aiCommand && !isAttacking && attackCooldownRef.current <= 0 && cooldownPassed) {
         if (aiCommand === 'block') {
           performBlock();
@@ -2158,7 +2158,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
     const initialTimeout = setTimeout(requestAIAction, 200);
     
     // ✅ OPTIMIZED: 600ms for responsive AI combat
-    const intervalId = setInterval(requestAIAction, 600);  // ✅ REDUCED from 2s to 600ms
+    const intervalId = setInterval(requestAIAction, 300);  // 600ms → 300ms
     // Reduced logging
     
     return () => {

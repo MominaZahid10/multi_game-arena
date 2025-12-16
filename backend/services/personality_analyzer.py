@@ -17,15 +17,18 @@ except ImportError:
     HybridPersonalitySystem = None
 
 class MultiGameAnalyzer:
-    def __init__(self):
+    def __init__(self, shared_ml_model=None):
         self.fighting_analyzer = FightingBehaviorAnalyzer()
         self.badminton_analyzer = BadmintonBehaviorAnalyzer()
         self.racing_analyzer = RacingBehaviorAnalyzer()
-        
-        self.hybrid_system = None
-        if CrossGamePersonalityClassifier:
-            self.hybrid_system = CrossGamePersonalityClassifier()
-            self._load_trained_models()
+        if shared_ml_model:
+            self.hybrid_system = shared_ml_model
+            print("✅ Using shared ML model in MultiGameAnalyzer")
+        else:
+            self.hybrid_system = None
+            if CrossGamePersonalityClassifier:
+                self.hybrid_system = CrossGamePersonalityClassifier()
+                self._load_trained_models()
     
     def _load_trained_models(self):
         """Load trained models without aggressive retraining - FIXED VERSION"""
@@ -35,14 +38,12 @@ class MultiGameAnalyzer:
             file_size = os.path.getsize(model_path)
             print(f"📂 Found model file: {file_size / (1024*1024):.1f}MB")
             
-            # Check if file is reasonable size (not corrupted)
-            if file_size < 1024:  # Less than 1KB means corrupted
+            if file_size < 1024:  
                 print("⚠️ Model file too small, appears corrupted. Retraining...")
                 self._train_new_models()
                 return
             
             try:
-                # Simply load the model without aggressive testing
                 success = self.hybrid_system.load_models(model_path)
                 if success:
                     print("✅ Loaded existing hybrid personality models successfully")
@@ -67,15 +68,12 @@ class MultiGameAnalyzer:
             
         try:
             print("🏗️ Generating fresh training data...")
-            # Generate training data using your model's method
             training_data = self.hybrid_system.generate_training_data(n_samples=5000)
             
             print("🤖 Training hybrid models...")
-            # Train models using your model's method
             performance = self.hybrid_system.train_models(training_data)
             
             print("💾 Saving trained models...")
-            # Save models using your model's method
             self.hybrid_system.save_models("hybrid_personality_system.pkl")
             
             print(f"✅ New hybrid models trained and saved successfully!")
@@ -83,7 +81,6 @@ class MultiGameAnalyzer:
             print(f"  🎯 Classification Accuracy: {performance['classification_scores']['personality_accuracy']:.3f}")
             print(f"  📈 Min Category Accuracy: {performance['classification_scores']['min_category_accuracy']:.3f}")
             
-            # Optional: Test the newly trained model (but don't retrain if it fails)
             try:
                 test_features = {
                     'fighting': [0.8, 0.2, 0.6, 0.3],
@@ -99,13 +96,11 @@ class MultiGameAnalyzer:
             print(f"❌ Hybrid model training failed: {e}")
             import traceback
             traceback.print_exc()
-            # Fallback to rule-based analysis
             self.hybrid_system = None
     
     async def analyze_universal_behavior(self, actions: Dict[str, List]):
         """Updated main analysis method with better error handling"""
         
-        # Extract behavioral features using existing analyzers
         all_features = []
         game_ml_features = {}
         
@@ -144,34 +139,30 @@ class MultiGameAnalyzer:
             except Exception as e:
                 print(f"❌ Racing analysis failed: {e}")
         
-        # Use hybrid ML system for personality prediction if available
         if self.hybrid_system and self.hybrid_system.is_trained and game_ml_features:
             try:
                 print(f"🤖 Using hybrid ML prediction with {len(game_ml_features)} games...")
-                # Get hybrid prediction using your model's predict_personality method
                 hybrid_prediction = self.hybrid_system.predict_personality(game_ml_features)
                 
-                # Convert hybrid prediction to UnifiedPersonality format
                 personality_scores = hybrid_prediction['personality_scores']
                 
                 unified_profile = UnifiedPersonality(
-                    aggression_level=personality_scores['aggression_level'],
-                    risk_tolerance=personality_scores['risk_tolerance'],
-                    analytical_thinking=personality_scores['analytical_thinking'],
-                    patience_level=personality_scores['patience_level'],
-                    precision_focus=personality_scores['precision_focus'],
-                    competitive_drive=personality_scores['competitive_drive'],
-                    strategic_thinking=personality_scores['strategic_thinking'],
-                    adaptability=np.mean([personality_scores['strategic_thinking'], 
-                                        personality_scores['analytical_thinking']]),
-                    confidence_score=hybrid_prediction['confidence_score'],
-                    total_actions_analyzed=sum(len(actions[game]) for game in actions),
+                    aggression_level=float(personality_scores['aggression_level']),
+                    risk_tolerance=float(personality_scores['risk_tolerance']),
+                    analytical_thinking=float(personality_scores['analytical_thinking']),
+                    patience_level=float(personality_scores['patience_level']),
+                    precision_focus=float(personality_scores['precision_focus']),
+                    competitive_drive=float(personality_scores['competitive_drive']),
+                    strategic_thinking=float(personality_scores['strategic_thinking']),
+                    adaptability=float(np.mean([personality_scores['strategic_thinking'], 
+                                        personality_scores['analytical_thinking']])),
+                    confidence_score=float(hybrid_prediction['confidence_score']),
+                    total_actions_analyzed=int(sum(len(actions[game]) for game in actions)),
                     games_played=hybrid_prediction['games_analyzed'],
                     last_updated=datetime.now(),
-                    # Set the missing fields
                     personality_archetype=hybrid_prediction.get('personality_archetype', '🎮 Multi-Game Player'),
                     playstyle_category=hybrid_prediction.get('playstyle_category', '🎯 Adaptive Gamer'),
-                    category_confidence=hybrid_prediction.get('category_confidence', 0.0)
+                    category_confidence=float(hybrid_prediction.get('category_confidence', 0.0))
                 )
                 
                 print(f"✅ Hybrid ML personality analysis complete!")
@@ -187,15 +178,11 @@ class MultiGameAnalyzer:
                 import traceback
                 traceback.print_exc()
         
-        # Fallback to rule-based analysis
         print(f"📋 Using rule-based analysis fallback...")
-        # Initialize the rule-based personality synthesizer
         personality_synthesizer = PersonalitySynthesizer()
         
-        # Log that we're using the rule-based fallback
         print(f"🔄 Using rule-based personality analysis with {len(all_features)} features")
         
-        # Determine which games were analyzed
         games_analyzed = set()
         for feature in all_features:
             if hasattr(feature, 'game_source') and feature.game_source:
@@ -203,7 +190,6 @@ class MultiGameAnalyzer:
         
         print(f"🎮 Games analyzed: {', '.join(games_analyzed)}")
         
-        # Synthesize the personality profile using rule-based approach
         try:
             unified_profile = await personality_synthesizer.synthesize(all_features)
             
@@ -217,7 +203,6 @@ class MultiGameAnalyzer:
             import traceback
             traceback.print_exc()
             
-            # Create a default personality profile as ultimate fallback
             print(f"⚠️ Creating default personality profile as ultimate fallback")
             unified_profile = UnifiedPersonality(
                 aggression_level=0.5,
@@ -228,7 +213,7 @@ class MultiGameAnalyzer:
                 competitive_drive=0.5,
                 strategic_thinking=0.5,
                 adaptability=0.5,
-                confidence_score=0.3,  # Low confidence since this is a default
+                confidence_score=0.3,  
                 total_actions_analyzed=len(all_features),
                 games_played=list(games_analyzed),
                 last_updated=datetime.now(),
@@ -240,56 +225,49 @@ class MultiGameAnalyzer:
         return unified_profile
     
     def _extract_ml_features_fighting(self, actions: List[Any]) -> List[float]:
-        """Extract ML features for fighting game - FIXED to use actual action data"""
-        if not actions:
-          return [0.5, 0.5, 0.5, 0.5]  # Default neutral features
-    
-        print(f"🔍 Extracting fighting features from {len(actions)} actions")
-    
-    # Analyze actual action patterns instead of hard-coded values
-        attack_count = 0
-        defend_count = 0
-        combo_total = 0
-        success_count = 0
-    
-        for action in actions:
-        # Handle different action data structures
-          action_type = None
-          success = False
-          combo_count = 0
+                """Extract ML features matching training data format"""
+                if not actions:
+                        return [0.5, 0.5, 0.5, 0.5]
         
-          if isinstance(action, dict):
-            action_type = action.get('action_type')
-            success = action.get('success', False)
-            combo_count = action.get('combo_count', 0)
-          else:
-            # Handle object attributes
-            action_type = getattr(action, 'action_type', None)
-            success = getattr(action, 'success', False)
-            combo_count = getattr(action, 'combo_count', 0)
+                attack_count = 0
+                defend_count = 0
+                combo_total = 0
+                success_count = 0
         
-        # Count attack vs defense actions
-          if action_type in ['attack', 'punch', 'kick', 'combo', 'special_move']:
-            attack_count += 1
-          elif action_type in ['block', 'dodge', 'counter']:
-            defend_count += 1
+                for action in actions:
+                        if isinstance(action, dict):
+                                action_type = action.get('action_type')
+                                success = action.get('success', False)
+                                combo_count = action.get('combo_count', 0)
+                        else:
+                                action_type = getattr(action, 'action_type', None)
+                                success = getattr(action, 'success', False)
+                                combo_count = getattr(action, 'combo_count', 0)
             
-          if success:
-            success_count += 1
+                        if action_type in ['attack', 'punch', 'kick', 'combo', 'special_move']:
+                                attack_count += 1
+                        elif action_type in ['block', 'dodge', 'counter']:
+                                defend_count += 1
             
-          combo_total += combo_count
-    
-    # Calculate dynamic features
-        total_actions = len(actions)
-        aggression_rate = attack_count / total_actions if total_actions > 0 else 0.5
-        defense_ratio = defend_count / total_actions if total_actions > 0 else 0.5
-        combo_preference = combo_total / (total_actions * 3) if total_actions > 0 else 0.5  # Normalize
-        reaction_time = max(0.1, min(1.0, success_count / total_actions)) if total_actions > 0 else 0.5
-    
-        features = [aggression_rate, defense_ratio, combo_preference, reaction_time]
-        print(f"📊 Fighting features calculated: {features}")
-    
-        return features
+                        if success:
+                                success_count += 1
+            
+                        combo_total += combo_count
+        
+                total = len(actions)
+        
+                # CRITICAL: Match training data format EXACTLY
+                aggression_rate = attack_count / total if total > 0 else 0.5
+                defense_ratio = defend_count / total if total > 0 else 0.5  # NOT inverted!
+                combo_preference = combo_total / (total * 3) if total > 0 else 0.5  # NOT scaled by 0.95!
+                reaction_time = success_count / total if total > 0 else 0.5  # NOT inverted!
+        
+                return [
+                        np.clip(aggression_rate, 0.05, 1.0),
+                        np.clip(defense_ratio, 0.05, 1.0),
+                        np.clip(combo_preference, 0.05, 1.0),
+                        np.clip(reaction_time, 0.05, 1.0)
+                ]
     
     def _extract_ml_features_badminton(self, actions: List[Any]) -> List[float]:
       """Extract ML features for badminton - FIXED with dynamic analysis"""
@@ -304,7 +282,6 @@ class MultiGameAnalyzer:
       rally_positions = []
     
       for action in actions:
-        # Handle different data structures
         if isinstance(action, dict):
             shot_type = action.get('shot_type')
             power_level = action.get('power_level')
@@ -325,8 +302,7 @@ class MultiGameAnalyzer:
         if rally_position:
             rally_positions.append(rally_position)
     
-    # Calculate features
-      shot_variety = len(shot_types) / 5.0 if shot_types else 0.5  # Max 5 shot types
+      shot_variety = len(shot_types) / 5.0 if shot_types else 0.5  
     
       if power_levels:
         power_variance = np.var(power_levels)
@@ -334,9 +310,7 @@ class MultiGameAnalyzer:
       else:
         power_control = 0.5
     
-    # Court positioning analysis
       if court_positions:
-        # Calculate movement variety as strategic thinking indicator
         if len(court_positions) > 1:
             position_changes = 0
             for i in range(1, len(court_positions)):
@@ -345,7 +319,7 @@ class MultiGameAnalyzer:
                 if isinstance(prev_pos, (list, tuple)) and isinstance(curr_pos, (list, tuple)):
                     if len(prev_pos) >= 2 and len(curr_pos) >= 2:
                         distance = ((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)**0.5
-                        if distance > 0.5:  # Significant movement
+                        if distance > 0.5:  
                             position_changes += 1
             court_positioning = min(1.0, position_changes / len(court_positions))
         else:
@@ -374,7 +348,6 @@ class MultiGameAnalyzer:
       total_actions = len(actions)
     
       for action in actions:
-        # Handle different data structures
         if isinstance(action, dict):
             speed = action.get('speed')
             crash_occurred = action.get('crash_occurred', False)
@@ -391,12 +364,10 @@ class MultiGameAnalyzer:
         if overtaking_attempt:
             overtake_attempts += 1
     
-    # Calculate features
       if speeds:
-        speed_preference = np.mean(speeds) / 120.0  # Normalize to max reasonable speed
+        speed_preference = np.mean(speeds) / 120.0  
         speed_preference = min(1.0, max(0.1, speed_preference))
         
-        # Consistency from speed variance
         if len(speeds) > 1:
             speed_variance = np.var(speeds)
             consistency = max(0.1, min(1.0, 1.0 - speed_variance / 400))
@@ -406,11 +377,9 @@ class MultiGameAnalyzer:
         speed_preference = 0.5
         consistency = 0.5
     
-    # Precision from crash avoidance
       crash_rate = crashes / total_actions if total_actions > 0 else 0
       precision_level = max(0.1, min(1.0, 1.0 - crash_rate))
     
-    # Overtaking aggression
       overtaking_aggression = overtake_attempts / total_actions if total_actions > 0 else 0
       overtaking_aggression = min(1.0, overtaking_aggression)
     
@@ -465,7 +434,6 @@ class MultiGameAnalyzer:
         
         return display_data
 
-# Keep your existing analyzers (they're working well)
 class FightingBehaviorAnalyzer:
     """Enhanced fighting game behavioral analysis"""
     
@@ -475,21 +443,19 @@ class FightingBehaviorAnalyzer:
         
         features = []
         
-        # Aggression analysis
         attack_actions = sum(1 for a in actions if getattr(a, 'move_type', '') == 'attack')
         aggression_score = attack_actions / len(actions) if actions else 0
         features.append(BehavioralFeature(
             name="aggression_level",
-            value=min(1.0, aggression_score * 1.2),  # Scale up for fighting context
+            value=min(1.0, aggression_score * 1.2),  
             confidence=min(1.0, len(actions) / 20),
             game_source="fighting",
             description=f"Based on {attack_actions}/{len(actions)} attack moves"
         ))
         
-        # Risk tolerance from combo usage
         combo_actions = sum(getattr(a, 'combo_count', 0) for a in actions)
         avg_combo = combo_actions / len(actions) if actions else 0
-        risk_score = min(1.0, avg_combo / 5.0)  # Normalize combo count
+        risk_score = min(1.0, avg_combo / 5.0)  
         features.append(BehavioralFeature(
             name="risk_tolerance",
             value=risk_score,
@@ -498,7 +464,6 @@ class FightingBehaviorAnalyzer:
             description=f"Average combo length: {avg_combo:.1f}"
         ))
         
-        # Defensive behavior analysis
         block_actions = sum(1 for a in actions if getattr(a, 'move_type', '') == 'block')
         patience_score = block_actions / len(actions) if actions else 0
         features.append(BehavioralFeature(
@@ -509,7 +474,6 @@ class FightingBehaviorAnalyzer:
             description=f"Defensive moves: {block_actions}/{len(actions)}"
         ))
         
-        # Strategic thinking from movement patterns
         move_actions = sum(1 for a in actions if getattr(a, 'move_type', '') == 'move')
         strategic_score = move_actions / len(actions) if actions else 0
         features.append(BehavioralFeature(
@@ -531,9 +495,8 @@ class BadmintonBehaviorAnalyzer:
         
         features = []
         
-        # Strategic thinking from shot variety
         shot_types = set(getattr(a, 'shot_type', 'unknown') for a in actions)
-        strategy_score = len(shot_types) / 5.0  # Max 5 shot types
+        strategy_score = len(shot_types) / 5.0 
         features.append(BehavioralFeature(
             name="strategic_thinking",
             value=min(1.0, strategy_score),
@@ -542,10 +505,9 @@ class BadmintonBehaviorAnalyzer:
             description=f"Uses {len(shot_types)} different shot types"
         ))
         
-        # Precision from power control
         power_levels = [getattr(a, 'power_level', 0.5) for a in actions]
         power_variance = np.var(power_levels) if power_levels else 0
-        precision_score = max(0, 1.0 - power_variance * 2)  # Lower variance = higher precision
+        precision_score = max(0, 1.0 - power_variance * 2)  
         features.append(BehavioralFeature(
             name="precision_focus",
             value=precision_score,
@@ -554,7 +516,6 @@ class BadmintonBehaviorAnalyzer:
             description=f"Power control variance: {power_variance:.3f}"
         ))
         
-        # Competitive drive from smash frequency
         smash_count = sum(1 for a in actions if getattr(a, 'shot_type', '') == 'smash')
         competitive_score = min(1.0, smash_count / len(actions) * 2)
         features.append(BehavioralFeature(
@@ -565,7 +526,6 @@ class BadmintonBehaviorAnalyzer:
             description=f"Aggressive shots: {smash_count}/{len(actions)}"
         ))
         
-        # Patience from rally length
         rally_positions = [getattr(a, 'rally_position', 1) for a in actions]
         avg_rally_pos = np.mean(rally_positions) if rally_positions else 1
         patience_score = min(1.0, avg_rally_pos / 10.0)
@@ -588,22 +548,20 @@ class RacingBehaviorAnalyzer:
         
         features = []
         
-        # Risk tolerance from overtaking
         overtake_attempts = sum(1 for a in actions if getattr(a, 'overtaking_attempt', False))
         risk_score = overtake_attempts / len(actions) if actions else 0
         features.append(BehavioralFeature(
             name="risk_tolerance",
-            value=min(1.0, risk_score * 2),  # Scale up for racing context
+            value=min(1.0, risk_score * 2),  
             confidence=min(1.0, len(actions) / 25),
             game_source="racing",
             description=f"Overtaking attempts: {overtake_attempts}/{len(actions)}"
         ))
         
-        # Precision from speed consistency
         speeds = [getattr(a, 'speed', 0) for a in actions if getattr(a, 'speed', 0) > 0]
         if speeds:
             speed_variance = np.var(speeds)
-            precision_score = max(0, 1.0 - speed_variance / 1000)  # Normalize variance
+            precision_score = max(0, 1.0 - speed_variance / 1000)  
             features.append(BehavioralFeature(
                 name="precision_focus",
                 value=precision_score,
@@ -612,7 +570,6 @@ class RacingBehaviorAnalyzer:
                 description=f"Speed consistency (variance: {speed_variance:.1f})"
             ))
         
-        # Analytical thinking from crash avoidance
         crashes = sum(1 for a in actions if getattr(a, 'crash_occurred', False))
         analytical_score = max(0, 1.0 - crashes / len(actions) * 2)
         features.append(BehavioralFeature(
@@ -623,10 +580,9 @@ class RacingBehaviorAnalyzer:
             description=f"Crash rate: {crashes}/{len(actions)}"
         ))
         
-        # Competitive drive from speed preference
         if speeds:
             avg_speed = np.mean(speeds)
-            competitive_score = min(1.0, avg_speed / 100.0)  # Normalize to 0-1
+            competitive_score = min(1.0, avg_speed / 100.0)  
             features.append(BehavioralFeature(
                 name="competitive_drive",
                 value=competitive_score,
@@ -641,7 +597,6 @@ class PersonalitySynthesizer:
     """Enhanced personality synthesis with ML fallback"""
     
     def __init__(self):
-        # Define personality archetypes with their trait thresholds
         self.personality_archetypes = {
             "🔥 Aggressive Dominator": {
                 "primary_traits": ["aggression_level", "competitive_drive"],
@@ -679,7 +634,6 @@ class PersonalitySynthesizer:
             }
         }
         
-        # Define playstyle categories with their game-specific traits
         self.playstyle_categories = {
             "🥊 Combat Veteran": {
                 "game_focus": "fighting",
@@ -709,7 +663,6 @@ class PersonalitySynthesizer:
     
     async def synthesize(self, features: List[BehavioralFeature]) -> UnifiedPersonality:
         """Main synthesis method - fallback for when ML models aren't available"""
-        # Initialize base personality
         personality_traits = {
             "aggression_level": 0.5,
             "risk_tolerance": 0.5,
@@ -721,39 +674,32 @@ class PersonalitySynthesizer:
             "adaptability": 0.5
         }
         
-        # Group features by trait name
         trait_groups = {}
         for feature in features:
             if feature.name not in trait_groups:
                 trait_groups[feature.name] = []
             trait_groups[feature.name].append(feature)
         
-        # Synthesize each trait with confidence weighting
         overall_confidence = 0.0
         total_actions = len(features)
         
         for trait_name, trait_features in trait_groups.items():
             if trait_name in personality_traits:
-                # Confidence-weighted average
                 total_weight = sum(f.confidence for f in trait_features)
                 if total_weight > 0:
                     weighted_value = sum(f.value * f.confidence for f in trait_features) / total_weight
                     personality_traits[trait_name] = weighted_value
                     overall_confidence += total_weight / len(trait_features)
         
-        # Calculate final confidence
         final_confidence = min(1.0, overall_confidence / len(personality_traits))
         
-        # Determine personality archetype
         personality_archetype, archetype_confidence = self._determine_personality_archetype(personality_traits)
         
-        # Determine playstyle category
         playstyle_category, playstyle_confidence = self._determine_playstyle_category(
             personality_traits, 
             list(set(f.game_source for f in features))
         )
         
-        # Calculate category confidence (average of archetype and playstyle confidence)
         category_confidence = (archetype_confidence + playstyle_confidence) / 2
         
         return UnifiedPersonality(
@@ -773,31 +719,24 @@ class PersonalitySynthesizer:
         best_score = 0.0
         
         for archetype, criteria in self.personality_archetypes.items():
-            # Calculate match score based on primary traits
             primary_traits = criteria["primary_traits"]
             threshold = criteria["threshold"]
             
-            # Calculate average of primary traits
             primary_avg = sum(traits[trait] for trait in primary_traits) / len(primary_traits)
             match_score = primary_avg
             
-            # Apply negative trait penalties if defined
             if "negative_traits" in criteria and "negative_threshold" in criteria:
                 negative_traits = criteria["negative_traits"]
                 negative_threshold = criteria["negative_threshold"]
                 
-                # Check if negative traits are below threshold (as expected)
                 negative_avg = sum(traits[trait] for trait in negative_traits) / len(negative_traits)
                 if negative_avg > negative_threshold:
-                    # Penalize score if negative traits are too high
                     match_score *= (1 - (negative_avg - negative_threshold))
             
-            # Update best match if this is better
             if match_score > best_score and primary_avg >= threshold:
                 best_score = match_score
                 best_match = archetype
         
-        # Default if no good match found
         if not best_match:
             return "🎮 Balanced Player", 0.5
         
@@ -812,23 +751,18 @@ class PersonalitySynthesizer:
             game_focus = criteria["game_focus"]
             style_traits = criteria["traits"]
             
-            # Skip if game-specific and not played
             if game_focus != "all" and game_focus not in games_played:
                 continue
             
-            # Calculate match score based on traits
             trait_avg = sum(traits[trait] for trait in style_traits) / len(style_traits)
             
-            # Boost score if this is a game-specific category and that game was played
             game_bonus = 0.2 if game_focus in games_played and game_focus != "all" else 0.0
             match_score = trait_avg + game_bonus
             
-            # Update best match if this is better
             if match_score > best_score:
                 best_score = match_score
                 best_match = playstyle
         
-        # Default if no good match or no games played
         if not best_match or not games_played:
             return "🎯 Adaptive Gamer", 0.5
         
