@@ -371,30 +371,28 @@ jobs:
           # 1. Create a separate, clean folder for deployment
           mkdir deploy_package
           
-          # 2. Copy ONLY the backend files needed for the App
-          #    (We deliberately leave the 'frontend' folder behind)
+          # 2. Copy ONLY the backend files
           cp -r backend deploy_package/
           cp requirements.txt deploy_package/
           cp Dockerfile deploy_package/
           
-          #    Also copy the model if it exists in the repo
+          #    Copy model if it exists
           if [ -f "hybrid_personality_system.pkl" ]; then
             cp hybrid_personality_system.pkl deploy_package/
           fi
           
-          # 3. Initialize a BRAND NEW git repo inside that folder
-          #    This creates a repo with NO history of the frontend binaries
+          # 3. Initialize new repo (Likely creates 'master' branch)
           cd deploy_package
           git init
           git config user.email "ci@github.com"
           git config user.name "GitHub Actions"
           
-          # 4. Commit and Push the clean package
+          # 4. Commit
           git add .
           git commit -m "Deploy: Fresh backend build for HF Spaces"
           
-          #    Force push the fresh repo to overwrite the Space
-          git push --force https://oauth2:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE main
+          # 5. Push HEAD to remote 'main' (Fixes the master/main mismatch)
+          git push --force https://oauth2:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE HEAD:main
       
       - name: Send Discord Notification - HF Deployment
         if: always()
