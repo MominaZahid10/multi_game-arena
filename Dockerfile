@@ -27,9 +27,9 @@ ENV ENVIRONMENT=production \
     DEBUG=False \
     PYTHONUNBUFFERED=1
 
-EXPOSE 8000
+EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
-  CMD curl -f http://localhost:8000/ || exit 1
+  CMD curl -f http://localhost:7860/ || exit 1
 
-CMD ["python", "-m", "uvicorn", "backend.main_optimized:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["python", "-m", "uvicorn", "backend.main_optimized:app", "--host", "0.0.0.0", "--port", "7860", "--log-level", "info"]
