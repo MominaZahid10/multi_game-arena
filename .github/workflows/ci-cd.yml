@@ -262,6 +262,9 @@ jobs:
   # ============================================================================
   # JOB 5: Run Prefect ML Pipeline
   # ============================================================================
+   # ============================================================================
+  # JOB 5: Run Prefect ML Pipeline
+  # ============================================================================
   run-ml-pipeline:
     name: Execute ML Pipeline (Prefect)
     runs-on: ubuntu-latest
@@ -302,8 +305,17 @@ jobs:
         echo "SECRET_KEY=production-key-12345" >> .env
         echo "ENVIRONMENT=production" >> .env
         mkdir -p logs models
-    
+
+    # --- FIX 1: ADDED MODEL DOWNLOAD STEP ---
+    - name: Download Model
+      run: |
+        python backend/download_model.py
+    # ----------------------------------------
+
     - name: Run Prefect ML Pipeline
+      env:
+        # --- FIX 2: PASS DISCORD WEBHOOK TO PYTHON SCRIPT ---
+        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
       run: |
         python -m backend.ml_pipeline 
     
