@@ -370,6 +370,15 @@ jobs:
         run: |
           git config --global user.email "ci@github.com"
           git config --global user.name "GitHub Actions"
+          
+          # --- FIX: Remove frontend binaries before pushing ---
+          # These files cause the "binary files" error and aren't used by the backend Dockerfile
+          echo "🧹 Cleaning up frontend files for deployment..."
+          rm -rf frontend/
+          git add .
+          git commit -m "Deploy: Clean up binaries for HF Spaces" --allow-empty
+          # ----------------------------------------------------
+
           git push --force https://oauth2:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE main
       
       - name: Send Discord Notification - HF Deployment
