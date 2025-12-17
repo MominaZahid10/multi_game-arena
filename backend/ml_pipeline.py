@@ -178,13 +178,5 @@ def daily_model_monitoring():
         raise
 
 if __name__ == "__main__":
-    print("🚀 Configuring Prefect deployments...")
-    
-    daily_deploy = daily_model_monitoring.to_deployment(
-        name="daily-model-monitoring",
-        cron="0 2 * * *",
-        tags=["ml", "monitoring"]
-    )
-    
-    print("🚀 Starting local runner...")
-    serve(daily_deploy)
+    print("🚀 Running pipeline immediately for CI/CD...")
+    daily_model_monitoring()

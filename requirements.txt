@@ -55,3 +55,5 @@ aiofiles==23.2.1
 gdown==4.7.1
 scipy>=1.14.0
 deepchecks==0.19.1
+anywidget==0.9.3
+ipywidgets==8.1.1
