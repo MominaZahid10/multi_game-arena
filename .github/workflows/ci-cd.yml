@@ -179,7 +179,7 @@ jobs:
     - name: Run DeepChecks Validation
       run: |
         mkdir -p reports
-        python -m backend.validation.model_validation 
+        python -m backend.model_validation 
     
     - name: Upload Validation Reports
       uses: actions/upload-artifact@v4
