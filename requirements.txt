@@ -39,8 +39,6 @@ prefect==3.6.6
 
 prefect-sqlalchemy==0.4.1  
 
-deepchecks==0.17.4
-
 prometheus-client==0.23.1
 
 sentry-sdk[fastapi]==1.40.0
