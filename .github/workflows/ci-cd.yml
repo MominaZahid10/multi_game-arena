@@ -217,6 +217,16 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
     
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        
+    - name: Install Dependencies
+      run: |
+        # We only need requests now (standard in python usually, but safe to install)
+        pip install requests
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
@@ -227,9 +237,8 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
     
     - name: Download Model
-      continue-on-error: true
       run: |
-        python backend/download_model.py || echo "Using existing model"
+        python backend/download_model.py
     
     - name: Build and Push Docker Image
       uses: docker/build-push-action@v5
@@ -258,10 +267,6 @@ jobs:
         curl -H "Content-Type: application/json" \
           -d "{\"embeds\": [{\"title\": \"🐳 Docker Build - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Image Tag\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
           $DISCORD_WEBHOOK
-
-  # ============================================================================
-  # JOB 5: Run Prefect ML Pipeline
-  # ============================================================================
    # ============================================================================
   # JOB 5: Run Prefect ML Pipeline
   # ============================================================================

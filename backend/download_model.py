@@ -1,28 +1,30 @@
 import os
+import requests
 import shutil
 import sys
 from pathlib import Path
 
-try:
-    import gdown
-except ImportError:
-    print("❌ Error: 'gdown' library is missing. Please add 'gdown' to requirements.txt")
-    sys.exit(1)
+MODEL_URL = "https://huggingface.co/mominazahid/multi-game-arena-model/resolve/main/hybrid_personality_system.pkl?download=true"
 
-FILE_ID = "1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8"
 DESTINATION_ROOT = Path("hybrid_personality_system.pkl")
 DESTINATION_SERVICES = Path(__file__).parent / "services" / "hybrid_personality_system.pkl"
 
 def main():
-    print(f"📥 Starting model download from Google Drive (ID: {FILE_ID})...")
+    print(f"📥 Starting model download from Hugging Face...")
+    print(f"   URL: {MODEL_URL}")
     
+    # 1. Clean up old files
     if DESTINATION_ROOT.exists():
         os.remove(DESTINATION_ROOT)
     
     try:
-        url = f'https://drive.google.com/uc?id={FILE_ID}'
-        gdown.download(url, str(DESTINATION_ROOT), quiet=False)
+        with requests.get(MODEL_URL, stream=True) as response:
+            response.raise_for_status()
+            with open(DESTINATION_ROOT, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
         
+        # 3. Verify Download
         if not DESTINATION_ROOT.exists():
             print("❌ Error: Download failed (file not found).")
             sys.exit(1)
@@ -31,7 +33,7 @@ def main():
         print(f"   ✅ Downloaded: {file_size / (1024*1024):.2f} MB")
         
         if file_size < 100 * 1024:
-             print("❌ Error: File is too small. It might be an HTML error page.")
+             print("❌ Error: File is too small. Check your URL.")
              sys.exit(1)
 
     except Exception as e:
