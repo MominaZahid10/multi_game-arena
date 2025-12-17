@@ -1,3 +1,4 @@
+import numpy as np
 if not hasattr(np, 'Inf'):
     np.Inf = np.inf
 if not hasattr(np, 'NINF'):
