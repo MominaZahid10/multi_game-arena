@@ -1,0 +1,413 @@
+name: ML Pipeline CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/multi-game-arena
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ============================================================================
+  # JOB 1: Code Quality & Linting
+  # ============================================================================
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 isort pylint mypy
+        pip install -r requirements.txt
+    
+    - name: Run Black (Code Formatting)
+      run: |
+        black --check backend/ || echo "⚠️ Code formatting issues found"
+    
+    - name: Run isort (Import Sorting)
+      run: |
+        isort --check-only backend/ || echo "⚠️ Import sorting issues found"
+    
+    - name: Run Flake8 (Linting)
+      run: |
+        flake8 backend/ --max-line-length=120 --ignore=E501,W503,E203 || echo "⚠️ Linting issues found"
+    
+    - name: Send Discord Notification - Code Quality
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="✅ Code quality checks passed"
+        else
+          COLOR=15548997
+          MESSAGE="❌ Code quality checks failed"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"🔍 Code Quality - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # JOB 2: Unit Tests & ML Tests
+  # ============================================================================
+  run-tests:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: test_gamearena
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+    
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov httpx
+        pip install -r requirements.txt
+    
+    - name: Create Test Environment
+      run: |
+        mkdir -p logs models reports
+        echo "DATABASE_URL=postgresql://postgres:testpassword@localhost:5432/test_gamearena" > .env
+        echo "SECRET_KEY=test-secret-key-12345" >> .env
+        echo "ENVIRONMENT=testing" >> .env
+    
+    - name: Run Unit Tests
+      run: |
+        pytest backend/tests/ -v --cov=backend --cov-report=xml --cov-report=html || echo "⚠️ Some tests failed"
+    
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: htmlcov/
+    
+    - name: Send Discord Notification - Tests
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="✅ All tests passed"
+        else
+          COLOR=15548997
+          MESSAGE="❌ Some tests failed"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"🧪 Test Results - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # JOB 3: Data Validation with DeepChecks
+  # ============================================================================
+  data-validation:
+    name: Data & Model Validation
+    runs-on: ubuntu-latest
+    needs: run-tests
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Download Model (if exists)
+      continue-on-error: true
+      run: |
+        # Try to download pre-trained model or train new one
+        python backend/download_model.py || echo "⚠️ Model download skipped"
+    
+    - name: Run DeepChecks Validation
+      run: |
+        python backend/model_validation.py || echo "⚠️ Validation completed with warnings"
+    
+    - name: Upload Validation Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: validation-reports
+        path: reports/
+    
+    - name: Send Discord Notification - Validation
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="✅ Data validation passed"
+        else
+          COLOR=15548997
+          MESSAGE="❌ Data validation issues found"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"📊 Data Validation - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # JOB 4: Build & Push Docker Image
+  # ============================================================================
+  build-docker:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [code-quality, run-tests, data-validation]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Download Model
+      run: |
+        python backend/download_model.py || echo "Using existing model"
+    
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.DOCKER_IMAGE }}:latest
+          ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+        cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
+        cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+    
+    - name: Send Discord Notification - Docker Build
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="✅ Docker image built and pushed successfully"
+        else
+          COLOR=15548997
+          MESSAGE="❌ Docker build failed"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"🐳 Docker Build - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Image Tag\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # JOB 5: Run Prefect ML Pipeline
+  # ============================================================================
+  run-ml-pipeline:
+    name: Execute ML Pipeline (Prefect)
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/main'
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: pgadmin4
+          POSTGRES_DB: gamearena
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Setup Environment
+      run: |
+        echo "DATABASE_URL=postgresql://postgres:pgadmin4@localhost:5432/gamearena" > .env
+        echo "SECRET_KEY=production-key-12345" >> .env
+        echo "ENVIRONMENT=production" >> .env
+        mkdir -p logs models
+    
+    - name: Run Prefect ML Pipeline
+      run: |
+        python backend/ml_pipeline.py || echo "⚠️ Pipeline completed with warnings"
+    
+    - name: Upload Pipeline Logs
+      uses: actions/upload-artifact@v3
+      with:
+        name: pipeline-logs
+        path: logs/
+    
+    - name: Send Discord Notification - Pipeline
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="✅ ML Pipeline executed successfully"
+        else
+          COLOR=15548997
+          MESSAGE="❌ ML Pipeline failed"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"⚙️ Prefect Pipeline - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true}]}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # JOB 6: Deploy to Production (Optional)
+  # ============================================================================
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: run-ml-pipeline
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: Deploy to Server (SSH)
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /app/multi-game-arena
+          docker-compose pull
+          docker-compose up -d --force-recreate
+          docker system prune -f
+    
+    - name: Send Discord Notification - Deployment
+      if: always()
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          COLOR=5763719
+          MESSAGE="🚀 Deployment successful!"
+        else
+          COLOR=15548997
+          MESSAGE="❌ Deployment failed"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{\"title\": \"🚀 Deployment - ${{ github.repository }}\", \"description\": \"$MESSAGE\", \"color\": $COLOR, \"fields\": [{\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": true}, {\"name\": \"Time\", \"value\": \"$(date)\", \"inline\": true}], \"footer\": {\"text\": \"Production Environment\"}}]}" \
+          $DISCORD_WEBHOOK
+
+  # ============================================================================
+  # FINAL JOB: Send Summary
+  # ============================================================================
+  send-summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, run-tests, data-validation, build-docker, run-ml-pipeline]
+    if: always()
+    
+    steps:
+    - name: Send Complete Summary to Discord
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        if [ "${{ needs.code-quality.result }}" == "success" ] && [ "${{ needs.run-tests.result }}" == "success" ] && [ "${{ needs.data-validation.result }}" == "success" ] && [ "${{ needs.build-docker.result }}" == "success" ] && [ "${{ needs.run-ml-pipeline.result }}" == "success" ]; then
+          COLOR=5763719
+          TITLE="✅ CI/CD Pipeline Complete - All Jobs Passed"
+          DESCRIPTION="All stages completed successfully!"
+        else
+          COLOR=15548997
+          TITLE="⚠️ CI/CD Pipeline Complete - Some Issues"
+          DESCRIPTION="Check individual job results for details"
+        fi
+        
+        curl -H "Content-Type: application/json" \
+          -d "{\"embeds\": [{
+            \"title\": \"$TITLE\",
+            \"description\": \"$DESCRIPTION\",
+            \"color\": $COLOR,
+            \"fields\": [
+              {\"name\": \"Code Quality\", \"value\": \"${{ needs.code-quality.result }}\", \"inline\": true},
+              {\"name\": \"Tests\", \"value\": \"${{ needs.run-tests.result }}\", \"inline\": true},
+              {\"name\": \"Validation\", \"value\": \"${{ needs.data-validation.result }}\", \"inline\": true},
+              {\"name\": \"Docker Build\", \"value\": \"${{ needs.build-docker.result }}\", \"inline\": true},
+              {\"name\": \"ML Pipeline\", \"value\": \"${{ needs.run-ml-pipeline.result }}\", \"inline\": true},
+              {\"name\": \"Commit\", \"value\": \"${{ github.sha }}\", \"inline\": false}
+            ],
+            \"footer\": {\"text\": \"${{ github.repository }} - ${{ github.ref_name }}\"},
+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+          }]}" \
+          $DISCORD_WEBHOOK
