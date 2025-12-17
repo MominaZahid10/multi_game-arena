@@ -13,10 +13,11 @@ sys.path.append(parent_dir)
 from prefect import flow, task, serve
 from prefect.cache_policies import NO_CACHE 
 from backend.services.model1 import CrossGamePersonalityClassifier
-from backend.databaseconn import SessionLocal
+from backend.databaseconn import SessionLocal, engine, Base
 from backend.dbmodels.games import PlayerAction
 
 DISCORD_WEBHOOK_URL=os.getenv("DISCORD_WEBHOOK_URL")
+
 @task(name="Load Existing Model", retries=3, retry_delay_seconds=60)
 def load_existing_model():
     """Load your pre-trained model safely"""
@@ -133,7 +134,7 @@ def send_notification(success: bool, message: str):
     """Send REAL notification to Discord/Slack"""
     print(f"📧 Sending notification: {message}")
     
-    if "YOUR_DISCORD" in DISCORD_WEBHOOK_URL:
+    if "YOUR_DISCORD" in str(DISCORD_WEBHOOK_URL) or not DISCORD_WEBHOOK_URL:
         print("⚠️ No Discord URL provided. Skipping web request.")
         return
         
@@ -159,6 +160,12 @@ def send_notification(success: bool, message: str):
 def daily_model_monitoring():
     try:
         print("🚀 Starting Daily Model Monitoring...")
+        
+        print("🛠️ Checking/Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database schema ensured.")
+        # ----------------------------------------
+
         clf = load_existing_model()
         df = extract_training_data()
         df_clean = validate_data(df)
