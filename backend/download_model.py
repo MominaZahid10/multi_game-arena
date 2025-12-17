@@ -1,66 +1,42 @@
 import os
-import requests
 import shutil
+import sys
 from pathlib import Path
 
+try:
+    import gdown
+except ImportError:
+    print("❌ Error: 'gdown' library is missing. Please add 'gdown' to requirements.txt")
+    sys.exit(1)
 
-FILE_ID ="1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8"
-# ----------------------------------------------
-
+FILE_ID = "1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8"
 DESTINATION_ROOT = Path("hybrid_personality_system.pkl")
 DESTINATION_SERVICES = Path(__file__).parent / "services" / "hybrid_personality_system.pkl"
 
-def download_file_from_google_drive(id, destination):
-    URL = "https://docs.google.com/uc?export=download"
-
-    session = requests.Session()
-
-    response = session.get(URL, params={'id': id}, stream=True)
-    token = get_confirm_token(response)
-
-    if token:
-        params = {'id': id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
-
-    save_response_content(response, destination)    
-
-def get_confirm_token(response):
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            return value
-    return None
-
-def save_response_content(response, destination):
-    CHUNK_SIZE = 32768
-
-    with open(destination, "wb") as f:
-        for chunk in response.iter_content(CHUNK_SIZE):
-            if chunk: 
-                f.write(chunk)
-
 def main():
-    print(f"📥 Starting model download from Google Drive...")
+    print(f"📥 Starting model download from Google Drive (ID: {FILE_ID})...")
     
-    # Clean up any bad files from previous runs
     if DESTINATION_ROOT.exists():
         os.remove(DESTINATION_ROOT)
     
-    if not DESTINATION_ROOT.exists():
-        print("   Downloading to root directory...")
-        try:
-            download_file_from_google_drive(FILE_ID, DESTINATION_ROOT)
-            print(f"   ✅ Downloaded to: {DESTINATION_ROOT}")
+    try:
+        url = f'https://drive.google.com/uc?id={FILE_ID}'
+        gdown.download(url, str(DESTINATION_ROOT), quiet=False)
+        
+        if not DESTINATION_ROOT.exists():
+            print("❌ Error: Download failed (file not found).")
+            sys.exit(1)
             
-            # Check if file is too small (likely an HTML error page)
-            if DESTINATION_ROOT.stat().st_size < 10000:
-                print("   ❌ Error: File is too small. Likely downloaded an error page instead of the model.")
-                exit(1)
-                
-        except Exception as e:
-            print(f"   ❌ Failed to download: {e}")
-            exit(1)
-    else:
-        print(f"   ✅ Found in root: {DESTINATION_ROOT}")
+        file_size = DESTINATION_ROOT.stat().st_size
+        print(f"   ✅ Downloaded: {file_size / (1024*1024):.2f} MB")
+        
+        if file_size < 100 * 1024:
+             print("❌ Error: File is too small. It might be an HTML error page.")
+             sys.exit(1)
+
+    except Exception as e:
+        print(f"❌ Failed to download: {e}")
+        sys.exit(1)
 
     DESTINATION_SERVICES.parent.mkdir(parents=True, exist_ok=True)
     if not DESTINATION_SERVICES.exists():

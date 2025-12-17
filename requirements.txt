@@ -52,7 +52,7 @@ isort==5.13.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 aiofiles==23.2.1
-gdown==4.7.1
+gdown==4.2.0
 scipy>=1.14.0
 deepchecks==0.19.1
 anywidget==0.9.3
