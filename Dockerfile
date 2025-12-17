@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ backend/
 
-COPY hybrid_personality_system.pkl /app/hybrid_personality_system.pkl
+RUN python backend/download_model.py
 RUN mkdir -p backend/services && \
     cp /app/hybrid_personality_system.pkl /app/backend/services/hybrid_personality_system.pkl
 
