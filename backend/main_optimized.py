@@ -63,42 +63,84 @@ multi_game_analyzer = MultiGameAnalyzer(
 strategy_selector = CrossGameStrategySelector()
 def get_session_stats_lightweight(db: Session, session_id: str) -> dict:
     """
-    Optimized version that counts rows instead of fetching all objects.
-    Prevents event loop blocking on large sessions.
+    ✅ FIXED: Handles None values properly
     """
-    session = db.query(GameSession).filter(GameSession.session_id == session_id).first()
+    session = (
+        db.query(GameSession)
+        .filter(GameSession.session_id == session_id)
+        .first()
+    )
+
+    total_actions = (
+        db.query(func.count(PlayerAction.id))
+        .filter(PlayerAction.session_id == session_id)
+        .scalar()
+    ) or 0  # ✅ Handle None
+
+    # ✅ FIXED: Return valid data even if session doesn't exist
+    if not session and total_actions == 0:
+        return {
+            "session_info": {
+                "session_id": session_id,
+                "games_played": [],
+                "total_actions": 0,
+                "current_game": "unknown"
+            },
+            "game_breakdown": {},
+            "overall_stats": {
+                "total_actions": 0,
+                "success_rate": 0,
+                "games_played_count": 0
+            }
+        }
+
     
-    if not session:
-        return None
-    total_actions = db.query(func.count(PlayerAction.id)).filter(
-        PlayerAction.session_id == session_id
-    ).scalar()
+    # ✅ NEW (FIXED):
+    games_played = []
+    if session:
+        if session.games_played is None:
+            games_played = []
+        elif isinstance(session.games_played, list):
+            games_played = session.games_played
+        elif isinstance(session.games_played, str):
+            try:
+                games_played = json.loads(session.games_played)  # Use global json
+            except:
+                games_played = []
+        else:
+            games_played = []
+    
+    current_game = session.current_game if session and session.current_game else "unknown"
 
     game_breakdown = {}
     for game_type in ["fighting", "badminton", "racing"]:
-        count = db.query(func.count(PlayerAction.id)).filter(
-            PlayerAction.session_id == session_id,
-            PlayerAction.game_type == game_type
-        ).scalar()
-        
+        count = (
+            db.query(func.count(PlayerAction.id))
+            .filter(
+                PlayerAction.session_id == session_id,
+                PlayerAction.game_type == game_type
+            )
+            .scalar()
+        ) or 0  # ✅ Handle None
+
         if count > 0:
             game_breakdown[game_type] = {
                 "total_actions": count,
-                "success_rate": 0.5, 
+                "success_rate": 0.5,
                 "last_played": datetime.now().isoformat()
             }
 
     return {
         "session_info": {
-            "session_id": session.session_id,
-            "games_played": session.games_played or [],
+            "session_id": session_id,
+            "games_played": games_played,
             "total_actions": total_actions,
-            "current_game": session.current_game,
+            "current_game": current_game,
         },
         "game_breakdown": game_breakdown,
         "overall_stats": {
             "total_actions": total_actions,
-            "success_rate": 0.5, 
+            "success_rate": 0.5,
             "games_played_count": len(game_breakdown)
         }
     }
