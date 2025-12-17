@@ -1,3 +1,9 @@
+if not hasattr(np, 'Inf'):
+    np.Inf = np.inf
+if not hasattr(np, 'NINF'):
+    np.NINF = -np.inf
+if not hasattr(np, 'NaN'):
+    np.NaN = np.nan
 from deepchecks.tabular import Dataset
 from deepchecks.tabular.suites import model_evaluation, data_integrity, train_test_validation
 import pandas as pd
