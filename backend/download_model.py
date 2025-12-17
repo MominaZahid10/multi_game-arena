@@ -1,37 +1,63 @@
-
 import os
 import requests
+import shutil
 from pathlib import Path
 
-MODEL_URL = "https://drive.google.com/file/d/1cKsLODbuZXHapxAVjPTSaTRnlJklJ6G_/view?usp=drive_link"  
-MODEL_PATH = Path(__file__).parent / "services" / "hybrid_personality_system.pkl"
+FILE_ID = "https://drive.google.com/file/d/1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8/view?usp=drive_link"
+DESTINATION_ROOT = Path("hybrid_personality_system.pkl")
+DESTINATION_SERVICES = Path(__file__).parent / "services" / "hybrid_personality_system.pkl"
 
-def download_model():
-    """Download model if not present"""
-    if MODEL_PATH.exists():
-        print(f"✅ Model already exists at {MODEL_PATH}")
-        return
+def download_file_from_google_drive(id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+
+    session = requests.Session()
+
+    response = session.get(URL, params={'id': id}, stream=True)
+    token = get_confirm_token(response)
+
+    if token:
+        params = {'id': id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    save_response_content(response, destination)    
+
+def get_confirm_token(response):
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            return value
+    return None
+
+def save_response_content(response, destination):
+    CHUNK_SIZE = 32768
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk: 
+                f.write(chunk)
+
+def main():
+    print(f"📥 Starting model download from Google Drive...")
     
-    print(f"📥 Downloading model from cloud storage...")
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
-    # For Google Drive direct download
-    file_id = MODEL_URL.split('/d/')[1].split('/')[0]
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    
-    response = requests.get(download_url, stream=True)
-    total_size = int(response.headers.get('content-length', 0))
-    
-    with open(MODEL_PATH, 'wb') as f:
-        downloaded = 0
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-            downloaded += len(chunk)
-            if total_size:
-                progress = (downloaded / total_size) * 100
-                print(f"\rProgress: {progress:.1f}%", end='')
-    
-    print(f"\n✅ Model downloaded successfully to {MODEL_PATH}")
+    if not DESTINATION_ROOT.exists():
+        print("   Downloading to root directory...")
+        try:
+            download_file_from_google_drive(FILE_ID, DESTINATION_ROOT)
+            print(f"   ✅ Downloaded to: {DESTINATION_ROOT}")
+        except Exception as e:
+            print(f"   ❌ Failed to download: {e}")
+            exit(1)
+    else:
+        print(f"   ✅ Found in root: {DESTINATION_ROOT}")
+
+    DESTINATION_SERVICES.parent.mkdir(parents=True, exist_ok=True)
+    if not DESTINATION_SERVICES.exists():
+        print("   Copying to backend/services/...")
+        shutil.copy(DESTINATION_ROOT, DESTINATION_SERVICES)
+        print(f"   ✅ Copied to: {DESTINATION_SERVICES}")
+    else:
+        print(f"   ✅ Found in services: {DESTINATION_SERVICES}")
+
+    print("🚀 Model setup complete.")
 
 if __name__ == "__main__":
-    download_model()
+    main()
