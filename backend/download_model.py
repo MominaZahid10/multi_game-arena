@@ -3,7 +3,10 @@ import requests
 import shutil
 from pathlib import Path
 
-FILE_ID = "https://drive.google.com/file/d/1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8/view?usp=drive_link"
+
+FILE_ID ="1ULeOcT7t4oy5T-d9Shr7JStkqsqGG1F8"
+# ----------------------------------------------
+
 DESTINATION_ROOT = Path("hybrid_personality_system.pkl")
 DESTINATION_SERVICES = Path(__file__).parent / "services" / "hybrid_personality_system.pkl"
 
@@ -38,11 +41,21 @@ def save_response_content(response, destination):
 def main():
     print(f"📥 Starting model download from Google Drive...")
     
+    # Clean up any bad files from previous runs
+    if DESTINATION_ROOT.exists():
+        os.remove(DESTINATION_ROOT)
+    
     if not DESTINATION_ROOT.exists():
         print("   Downloading to root directory...")
         try:
             download_file_from_google_drive(FILE_ID, DESTINATION_ROOT)
             print(f"   ✅ Downloaded to: {DESTINATION_ROOT}")
+            
+            # Check if file is too small (likely an HTML error page)
+            if DESTINATION_ROOT.stat().st_size < 10000:
+                print("   ❌ Error: File is too small. Likely downloaded an error page instead of the model.")
+                exit(1)
+                
         except Exception as e:
             print(f"   ❌ Failed to download: {e}")
             exit(1)
