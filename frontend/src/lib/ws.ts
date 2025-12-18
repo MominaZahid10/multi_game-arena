@@ -8,7 +8,8 @@ export type WSMessage =
 
 export const connectMultiGameWS = (onMessage: (msg: WSMessage) => void, sessionId?: string) => {
   const sid = sessionId || getSessionId();
-  const ws = new WebSocket(`ws://localhost:8000/ws/multi-game/${sid}`);
+  const WS_URL = import.meta.env.VITE_WS_URL || `ws://localhost:8000/ws/multi-game/${sid}`;
+  const ws = new WebSocket(WS_URL);
   ws.onmessage = (event) => {
     try {
       const data: WSMessage = JSON.parse(event.data);

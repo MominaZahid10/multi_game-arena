@@ -1,7 +1,7 @@
 // lib/gameActions.ts - FIXED CORS VERSION
 
 // ✅ Use localhost instead of 127.0.0.1 to match frontend origin
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
 import { getSessionId } from './analytics';
 export type SendPlayerAction = (action: unknown) => void;
@@ -18,9 +18,7 @@ export const postFightingAction = async (actionData: any) => {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        // ✅ Add explicit origin header
-        'Origin': 'http://localhost:8080'
+        'Accept': 'application/json'
       },
       body: JSON.stringify({ action_data: actionData }),
       mode: 'cors', // ✅ Explicit CORS mode
@@ -84,8 +82,7 @@ export const postBadmintonAction = async (actionData: any) => {
     const response = await fetch(`${API_BASE}/games/badminton/action?session_id=${sessionId}`, {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json',
-        'Origin': 'http://localhost:8080'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ action_data: actionData }),
       mode: 'cors'
@@ -138,8 +135,7 @@ export const postRacingAction = async (actionData: any) => {
     const response = await fetch(`${API_BASE}/games/racing/action?session_id=${sessionId}`, {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json',
-        'Origin': 'http://localhost:8080'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ action_data: actionData }),
       mode: 'cors'
