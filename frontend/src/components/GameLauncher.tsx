@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import arenaBg from '@/assets/arena-bg.jpg';
 
 interface GameLauncherProps {
@@ -17,6 +18,7 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
     icon: string;
     gradient: string;
     buttonText: string;
+    comingSoon?: boolean;
   }
 
   const games: Game[] = [
@@ -28,7 +30,8 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
       bgColor: 'from-primary/30 to-gaming-teal/20',
       icon: '🥊',
       gradient: 'bg-gradient-to-br from-primary/20 via-gaming-teal/10 to-gaming-purple/15',
-      buttonText: 'Enter Arena'
+      buttonText: 'Enter Arena',
+      comingSoon: false
     },
     {
       id: 'badminton' as const,
@@ -38,7 +41,8 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
       bgColor: 'from-gaming-purple/30 to-gaming-magenta/20',
       icon: '🏸',
       gradient: 'bg-gradient-to-br from-gaming-purple/20 via-accent/10 to-gaming-teal/15',
-      buttonText: 'Start Match'
+      buttonText: 'Start Match',
+      comingSoon: true
     },
     {
       id: 'racing' as const,
@@ -48,7 +52,8 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
       bgColor: 'from-gaming-orange/30 to-gaming-yellow/20',
       icon: '🏎️',
       gradient: 'bg-gradient-to-br from-gaming-orange/20 via-gaming-yellow/10 to-primary/15',
-      buttonText: 'Begin Race'
+      buttonText: 'Begin Race',
+      comingSoon: true
     }
   ];
 
@@ -85,16 +90,31 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: index * 0.2 }}
-              whileHover={{ scale: 1.05, y: -10 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: game.comingSoon ? 1 : 1.05, y: game.comingSoon ? 0 : -10 }}
+              whileTap={{ scale: game.comingSoon ? 1 : 0.95 }}
             >
               <Card
-                className={`cursor-pointer h-80 overflow-hidden relative group border-2 border-border/50 hover:border-primary/60 transition-all duration-500 backdrop-blur-sm ${game.gradient} hover:scale-[1.02] active:scale-[0.98]`}
-                onClick={() => onGameSelect(game.id)}
+                className={`h-80 overflow-hidden relative group border-2 border-border/50 transition-all duration-500 backdrop-blur-sm ${game.gradient} ${
+                  game.comingSoon 
+                    ? 'opacity-75 cursor-not-allowed' 
+                    : 'cursor-pointer hover:border-primary/60 hover:scale-[1.02] active:scale-[0.98]'
+                }`}
+                onClick={() => !game.comingSoon && onGameSelect(game.id)}
               >
+                {/* Coming Soon Badge */}
+                {game.comingSoon && (
+                  <Badge 
+                    className="absolute top-4 right-4 z-20 bg-gaming-orange/90 text-white border-gaming-orange animate-pulse"
+                  >
+                    COMING SOON
+                  </Badge>
+                )}
+
                 <CardContent className="p-6 h-full flex flex-col justify-between relative z-10">
                   <div className="text-center">
-                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform duration-300 filter drop-shadow-lg">
+                    <div className={`text-5xl mb-4 transition-transform duration-300 filter drop-shadow-lg ${
+                      game.comingSoon ? 'grayscale' : 'group-hover:scale-110'
+                    }`}>
                       {game.icon}
                     </div>
                     <h3 className={`text-2xl font-gaming font-bold mb-3 ${game.color} tracking-wide`}>
@@ -107,18 +127,26 @@ const GameLauncher: React.FC<GameLauncherProps> = ({ onGameSelect }) => {
                   
                   <motion.div
                     className="mt-6"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={{ scale: game.comingSoon ? 1 : 1.02 }}
+                    whileTap={{ scale: game.comingSoon ? 1 : 0.98 }}
                   >
-                    <div className="btn-gaming w-full py-3 text-center font-gaming font-bold text-base tracking-widest">
-                      {game.buttonText}
+                    <div className={`w-full py-3 text-center font-gaming font-bold text-base tracking-widest ${
+                      game.comingSoon 
+                        ? 'bg-muted text-muted-foreground cursor-not-allowed' 
+                        : 'btn-gaming'
+                    }`}>
+                      {game.comingSoon ? 'LOCKED' : game.buttonText}
                     </div>
                   </motion.div>
                 </CardContent>
                 
-                {/* Professional glow effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="absolute inset-0 bg-gradient-gaming opacity-0 group-hover:opacity-5 transition-opacity duration-500" />
+                {/* Professional glow effect - Only for available games */}
+                {!game.comingSoon && (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <div className="absolute inset-0 bg-gradient-gaming opacity-0 group-hover:opacity-5 transition-opacity duration-500" />
+                  </>
+                )}
               </Card>
             </motion.div>
           ))}
