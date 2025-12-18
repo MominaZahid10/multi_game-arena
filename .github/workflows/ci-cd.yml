@@ -375,6 +375,7 @@ jobs:
           cp -r backend deploy_package/
           cp requirements.txt deploy_package/
           cp Dockerfile deploy_package/
+          cp README.md deploy_package/
           
           #    Copy model if it exists
           if [ -f "hybrid_personality_system.pkl" ]; then
