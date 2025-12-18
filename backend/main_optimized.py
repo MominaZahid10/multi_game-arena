@@ -216,21 +216,51 @@ async def process_fighting_action(
     db: Session = Depends(get_db)
 ):
     """
-    ✅ FIXED: Now saves actions to database properly
+    ✅ FIXED: Now saves BOTH player AND AI actions to database
     """
-    if not hasattr(process_fighting_action, '_req_counter'):
-        process_fighting_action._req_counter = 0
-    process_fighting_action._req_counter += 1
-    should_log = process_fighting_action._req_counter % 5 == 0
-    
     try:
         start_time = time.time()
         
         action_data = action_request.get('action_data', action_request)
         context = action_data.get('context', {})
-        if not isinstance(context, dict): 
-            context = {}
         
+        # ============================================================================
+        # 🔥 CRITICAL FIX: Save PLAYER action FIRST (before AI response)
+        # ============================================================================
+        def save_player_action():
+            try:
+                player_move_type = action_data.get('move_type', action_data.get('action_type', 'attack'))
+                
+                # Create player action record
+                player_action = PlayerAction(
+                    session_id=session_id,
+                    game_type="fighting",
+                    action_type=player_move_type,  # ✅ Player's actual action
+                    move_type=player_move_type,
+                    timestamp=time.time(),
+                    success=action_data.get('success', True),
+                    action_data=action_request,
+                    combo_count=action_data.get('combo_count', 0),
+                    damage_dealt=action_data.get('damage_dealt', 0),
+                    position_x=action_data.get('position', [0, 0])[0],
+                    position_y=action_data.get('position', [0, 0])[1] if len(action_data.get('position', [0])) > 1 else 0
+                )
+                db.add(player_action)
+                db.commit()
+                
+                print(f"✅ Saved PLAYER action: {player_move_type}")
+                return True
+            except Exception as e:
+                db.rollback()
+                print(f"❌ Failed to save player action: {e}")
+                return False
+        
+        # Save player action synchronously
+        player_saved = await asyncio.to_thread(save_player_action)
+        
+        # ============================================================================
+        # NOW get AI response (existing logic)
+        # ============================================================================
         player_pos = action_data.get('position', [0, 0])
         if isinstance(player_pos, dict):
             player_pos = [player_pos.get('x', 0), player_pos.get('z', player_pos.get('y', 0))]
@@ -244,18 +274,16 @@ async def process_fighting_action(
             'ai_health': context.get('ai_health', 100),
             'distance_to_player': context.get('distance_to_opponent', 5.0),
             'player_position': {'x': player_pos[0], 'z': player_pos[1] if len(player_pos) > 1 else 0},
-            'ai_position': ai_pos  
+            'ai_position': ai_pos
         }
-        if should_log:
-            print(f"🔥 Request #{process_fighting_action._req_counter}: player=({player_pos[0]:.1f},{player_pos[1] if len(player_pos)>1 else 0:.1f}), ai=({ai_pos.get('x',0):.1f},{ai_pos.get('z',0):.1f})")
-
+        
+        # Get personality for AI decision
         def get_personality_sync():
             return db.query(PersonalityProfile).filter(
                 PersonalityProfile.session_id == session_id
             ).first()
         
         p_db = await asyncio.to_thread(get_personality_sync)
-
         p_obj = None
         if p_db:
             p_obj = UnifiedPersonality(
@@ -269,7 +297,9 @@ async def process_fighting_action(
                 adaptability=p_db.adaptability
             )
         
+        # Get AI action
         ai_action_result = global_ai_opponent.get_action(GameType.FIGHTING, game_state, p_obj)
+        
         using_ml = False
         ml_archetype = None
         if isinstance(ai_action_result, dict):
@@ -286,26 +316,24 @@ async def process_fighting_action(
             ai_action_str = ai_action_result
             ai_position = {'x': 4.0, 'y': 0.0, 'z': 0.0}
 
-        # 🚀 CRITICAL FIX: Save action to database
-        def save_action_sync():
+        # Save AI action to database (existing logic)
+        def save_ai_action():
             try:
-                # Extract move type from action string
                 move_type = ai_action_str.split('_')[0] if '_' in ai_action_str else ai_action_str
                 
-                db_action = PlayerAction(
+                ai_action_db = PlayerAction(
                     session_id=session_id,
                     game_type="fighting",
-                    action_type=ai_action_str,
-                    move_type=move_type,  # e.g., 'punch', 'kick', 'block'
+                    action_type=f"ai_{ai_action_str}",  # ✅ Prefix with "ai_" to distinguish
+                    move_type=move_type,
                     timestamp=time.time(),
-                    success=True,  # AI actions are considered successful
-                    action_data=action_request,  # Store full context
-                    combo_count=0  # Can be updated based on action analysis
+                    success=True,
+                    action_data={"ai_action": ai_action_str, "position": ai_position},
+                    combo_count=0
                 )
-                db.add(db_action)
-                db.commit()
+                db.add(ai_action_db)
                 
-                # Also ensure GameSession exists
+                # Ensure GameSession exists
                 game_session = db.query(GameSession).filter(
                     GameSession.session_id == session_id
                 ).first()
@@ -333,18 +361,17 @@ async def process_fighting_action(
                             game_session.games_played.append("fighting")
                 
                 db.commit()
+                print(f"✅ Saved AI action: {ai_action_str}")
                 return True
             except Exception as e:
                 db.rollback()
-                print(f"❌ Database save error: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"❌ AI action save error: {e}")
                 return False
         
-        # Save to database asynchronously
-        save_success = await asyncio.to_thread(save_action_sync)
+        ai_saved = await asyncio.to_thread(save_ai_action)
 
-        stats = {"actions_today": process_fighting_action._req_counter}
+        # Build response
+        stats = {"actions_today": 1}
         response = {
             "success": True,
             "ai_action": {
@@ -353,26 +380,26 @@ async def process_fighting_action(
                 "timestamp": time.time() * 1000,
                 "confidence": 0.85,
                 "strategy": "adaptive_combat",
-                "using_ml": using_ml,  
-                "ml_archetype": ml_archetype 
+                "using_ml": using_ml,
+                "ml_archetype": ml_archetype
             },
             "game_state": game_state,
             "session_stats": stats,
             "personality": None,
-            "analytics_updated": save_success,
-            "database_saved": save_success
+            "analytics_updated": player_saved and ai_saved,
+            "database_saved": player_saved and ai_saved,
+            "player_action_saved": player_saved,  # ✅ NEW: Confirm player action was saved
+            "ai_action_saved": ai_saved
         }
         
-        if should_log:
-            elapsed_ms = (time.time() - start_time) * 1000
-            print(f"📤 Response #{process_fighting_action._req_counter}: action={ai_action_str}, pos=({ai_position['x']:.1f},{ai_position['z']:.1f}), time={elapsed_ms:.0f}ms, DB_saved={save_success}")
+        elapsed_ms = (time.time() - start_time) * 1000
+        print(f"📤 Response: player_saved={player_saved}, ai_saved={ai_saved}, time={elapsed_ms:.0f}ms")
         
         return response
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # Ensure rollback on error
         try:
             db.rollback()
         except:
@@ -385,7 +412,9 @@ async def process_fighting_action(
                 "timestamp": time.time() * 1000
             },
             "error": str(e),
-            "database_saved": False
+            "database_saved": False,
+            "player_action_saved": False,
+            "ai_action_saved": False
         }
 
 @app.post("/api/v1/games/badminton/action")
