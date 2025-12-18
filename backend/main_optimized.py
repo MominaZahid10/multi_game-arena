@@ -216,7 +216,7 @@ async def process_fighting_action(
     db: Session = Depends(get_db)
 ):
     """
-    FIXED: Synchronous processing to ensure responses are sent
+    ✅ FIXED: Now saves actions to database properly
     """
     if not hasattr(process_fighting_action, '_req_counter'):
         process_fighting_action._req_counter = 0
@@ -247,7 +247,7 @@ async def process_fighting_action(
             'ai_position': ai_pos  
         }
         if should_log:
-            print(f"📥 Request #{process_fighting_action._req_counter}: player=({player_pos[0]:.1f},{player_pos[1] if len(player_pos)>1 else 0:.1f}), ai=({ai_pos.get('x',0):.1f},{ai_pos.get('z',0):.1f})")
+            print(f"🔥 Request #{process_fighting_action._req_counter}: player=({player_pos[0]:.1f},{player_pos[1] if len(player_pos)>1 else 0:.1f}), ai=({ai_pos.get('x',0):.1f},{ai_pos.get('z',0):.1f})")
 
         def get_personality_sync():
             return db.query(PersonalityProfile).filter(
@@ -286,6 +286,64 @@ async def process_fighting_action(
             ai_action_str = ai_action_result
             ai_position = {'x': 4.0, 'y': 0.0, 'z': 0.0}
 
+        # 🚀 CRITICAL FIX: Save action to database
+        def save_action_sync():
+            try:
+                # Extract move type from action string
+                move_type = ai_action_str.split('_')[0] if '_' in ai_action_str else ai_action_str
+                
+                db_action = PlayerAction(
+                    session_id=session_id,
+                    game_type="fighting",
+                    action_type=ai_action_str,
+                    move_type=move_type,  # e.g., 'punch', 'kick', 'block'
+                    timestamp=time.time(),
+                    success=True,  # AI actions are considered successful
+                    action_data=action_request,  # Store full context
+                    combo_count=0  # Can be updated based on action analysis
+                )
+                db.add(db_action)
+                db.commit()
+                
+                # Also ensure GameSession exists
+                game_session = db.query(GameSession).filter(
+                    GameSession.session_id == session_id
+                ).first()
+                
+                if not game_session:
+                    game_session = GameSession(
+                        session_id=session_id,
+                        current_game="fighting",
+                        games_played=["fighting"]
+                    )
+                    db.add(game_session)
+                else:
+                    game_session.current_game = "fighting"
+                    if game_session.games_played is None:
+                        game_session.games_played = ["fighting"]
+                    elif "fighting" not in game_session.games_played:
+                        if isinstance(game_session.games_played, str):
+                            try:
+                                games = json.loads(game_session.games_played)
+                                games.append("fighting")
+                                game_session.games_played = games
+                            except:
+                                game_session.games_played = ["fighting"]
+                        else:
+                            game_session.games_played.append("fighting")
+                
+                db.commit()
+                return True
+            except Exception as e:
+                db.rollback()
+                print(f"❌ Database save error: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
+        
+        # Save to database asynchronously
+        save_success = await asyncio.to_thread(save_action_sync)
+
         stats = {"actions_today": process_fighting_action._req_counter}
         response = {
             "success": True,
@@ -301,18 +359,24 @@ async def process_fighting_action(
             "game_state": game_state,
             "session_stats": stats,
             "personality": None,
-            "analytics_updated": True
+            "analytics_updated": save_success,
+            "database_saved": save_success
         }
         
         if should_log:
             elapsed_ms = (time.time() - start_time) * 1000
-            print(f"📤 Response #{process_fighting_action._req_counter}: action={ai_action_str}, pos=({ai_position['x']:.1f},{ai_position['z']:.1f}), time={elapsed_ms:.0f}ms")
+            print(f"📤 Response #{process_fighting_action._req_counter}: action={ai_action_str}, pos=({ai_position['x']:.1f},{ai_position['z']:.1f}), time={elapsed_ms:.0f}ms, DB_saved={save_success}")
         
         return response
 
     except Exception as e:
         import traceback
         traceback.print_exc()
+        # Ensure rollback on error
+        try:
+            db.rollback()
+        except:
+            pass
         return {
             "success": False,
             "ai_action": {
@@ -320,7 +384,8 @@ async def process_fighting_action(
                 "position": {"x": 5, "y": 0, "z": 0}, 
                 "timestamp": time.time() * 1000
             },
-            "error": str(e)
+            "error": str(e),
+            "database_saved": False
         }
 
 @app.post("/api/v1/games/badminton/action")
@@ -623,7 +688,6 @@ async def quick_personality_analysis(session_id: str, db: Session = Depends(get_
     """
     def analyze_sync():
         try:
-            # Get recent actions
             recent_actions = db.query(PlayerAction).filter(
                 PlayerAction.session_id == session_id
             ).order_by(PlayerAction.timestamp.desc()).limit(100).all()
@@ -639,7 +703,6 @@ async def quick_personality_analysis(session_id: str, db: Session = Depends(get_
             if hasattr(global_ai_opponent, 'ml_classifier') and global_ai_opponent.ml_classifier:
                 ml_clf = global_ai_opponent.ml_classifier
                 
-                # Extract features from recent actions
                 fighting_actions = [a for a in recent_actions if a.game_type == 'fighting']
                 badminton_actions = [a for a in recent_actions if a.game_type == 'badminton']
                 racing_actions = [a for a in recent_actions if a.game_type == 'racing']
@@ -661,11 +724,9 @@ async def quick_personality_analysis(session_id: str, db: Session = Depends(get_
                         "message": "No valid game features extracted"
                     }
                 
-                # Get ML prediction
                 ml_prediction = ml_clf.predict_personality(game_features)
                 personality_scores = ml_prediction['personality_scores']
                 
-                # Update database with new analysis
                 profile = db.query(PersonalityProfile).filter(
                     PersonalityProfile.session_id == session_id
                 ).first()
@@ -674,7 +735,6 @@ async def quick_personality_analysis(session_id: str, db: Session = Depends(get_
                     profile = PersonalityProfile(session_id=session_id)
                     db.add(profile)
                 
-                # --- FIX: Explicitly cast numpy types to Python float ---
                 profile.aggression_level = float(personality_scores['aggression_level'])
                 profile.risk_tolerance = float(personality_scores['risk_tolerance'])
                 profile.analytical_thinking = float(personality_scores['analytical_thinking'])
