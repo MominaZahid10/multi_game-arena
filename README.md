@@ -293,9 +293,9 @@ This project helped me develop:
 **Momina Zahid**  
 Developer | Machine Learning Enthusiast
 
-📧 [email](mominazd12@example.com)  
-🔗 [LinkedIn](www.linkedin.com/in/mominazahidd)  
-💻 [GitHub](https://github.com/mominazahid10)  
+📧 [Email](mailto:mominazd12@example.com)  
+🔗 [LinkedIn](https://www.linkedin.com/in/mominazahidd)  
+💻 [GitHub](https://github.com/mominazahid10)
 
 ---
 
