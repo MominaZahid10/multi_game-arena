@@ -1,13 +1,4 @@
-"""
-🧪 COMPREHENSIVE ML SYSTEM TEST SUITE
-Tests everything before CI/CD deployment:
-- Model accuracy and performance
-- API endpoints functionality
-- Prediction correctness
-- Database integration
-- Error handling
-- Response times
-"""
+
 import requests
 import time
 import sys
@@ -15,9 +6,6 @@ import json
 from typing import Dict, List, Tuple
 import numpy as np
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
 API_URL = "http://localhost:8000/api/v1"
 TEST_SESSION_ID = f"test_comprehensive_{int(time.time())}"
 
@@ -116,8 +104,8 @@ def test_ml_model_loading():
                 "combo_preference": 0.85,
                 "reaction_time": 0.75
             },
-            "expected_keywords": ["Aggressive", "Dominator", "Risk", "Maverick", "Chaos", "Victory"],  # ✅ Added Victory Seeker
-            "min_confidence": 0.25,  # Well-regularized models
+            "expected_keywords": ["Aggressive", "Dominator", "Risk", "Maverick", "Chaos", "Victory"], 
+            "min_confidence": 0.25, 
             "ideal_confidence_min": 0.30,
             "ideal_confidence_max": 0.60
         },
@@ -142,7 +130,7 @@ def test_ml_model_loading():
                 "combo_preference": 0.50,
                 "reaction_time": 0.50
             },
-            "expected_keywords": None,  # Any archetype is fine
+            "expected_keywords": None,  
             "min_confidence": 0.20,
             "ideal_confidence_min": 0.25,
             "ideal_confidence_max": 0.50
@@ -165,7 +153,6 @@ def test_ml_model_loading():
                 archetype = data.get('archetype_name', 'Unknown')
                 confidence = data.get('confidence', 0)
                 
-                # Check archetype match
                 if test_case["expected_keywords"]:
                     archetype_matched = any(
                         keyword.lower() in archetype.lower() 
@@ -174,7 +161,6 @@ def test_ml_model_loading():
                 else:
                     archetype_matched = True
                 
-                # ✅ FIXED: Proper confidence evaluation
                 ideal_min = test_case["ideal_confidence_min"]
                 ideal_max = test_case["ideal_confidence_max"]
                 
@@ -190,7 +176,7 @@ def test_ml_model_loading():
                             f"{test_case['name']} - Good (conservative)",
                             f"Archetype: {archetype}, Confidence: {confidence:.1%} (slightly low but acceptable)"
                         )
-                    else:  # confidence > ideal_max
+                    else:  
                         print_pass(
                             f"{test_case['name']} - Good (high confidence)",
                             f"Archetype: {archetype}, Confidence: {confidence:.1%} (higher than ideal but correct)"
@@ -290,7 +276,6 @@ def test_fighting_endpoint():
             if response.status_code == 200:
                 data = response.json()
                 
-                # Validate response structure
                 required_fields = ["success", "ai_action"]
                 missing_fields = [f for f in required_fields if f not in data]
                 
@@ -314,7 +299,6 @@ def test_fighting_endpoint():
                 )
                 results.add_result(f"Fighting: {test_action['name']}", True)
                 
-                # Validate AI position is within bounds
                 if abs(position.get('x', 0)) > 7 or abs(position.get('z', 0)) > 5:
                     print_warn(
                         "AI position out of bounds",
@@ -564,7 +548,6 @@ def test_racing_endpoint():
 def test_personality_analysis():
     print_section("TEST 4: Multi-Game Personality Analysis System")
     
-    # Generate actions for FIGHTING game
     print_info("Generating FIGHTING game actions...")
     for i in range(10):
         requests.post(
@@ -585,7 +568,6 @@ def test_personality_analysis():
             timeout=5
         )
     
-    # Generate actions for BADMINTON game (if enabled)
     print_info("Generating BADMINTON game actions...")
     try:
         for i in range(8):
@@ -611,7 +593,6 @@ def test_personality_analysis():
     except Exception as e:
         print_info(f"Badminton actions skipped: {str(e)}")
     
-    # Generate actions for RACING game (if enabled)
     print_info("Generating RACING game actions...")
     try:
         for i in range(8):
@@ -637,9 +618,8 @@ def test_personality_analysis():
     except Exception as e:
         print_info(f"Racing actions skipped: {str(e)}")
     
-    time.sleep(1)  # Allow processing
-    
-    # Test quick analysis
+    time.sleep(1)  
+
     try:
         print_info("Running quick personality analysis...")
         response = requests.post(
@@ -663,7 +643,6 @@ def test_personality_analysis():
                 )
                 results.add_result("Personality Quick Analysis", True)
                 
-                # Validate personality traits
                 traits = data.get("traits", {})
                 required_traits = [
                     "aggression_level", "patience_level", "strategic_thinking",
@@ -689,7 +668,6 @@ def test_personality_analysis():
         print_fail("Quick analysis exception", str(e))
         results.add_result("Personality Quick Analysis", False, str(e))
     
-    # Test personality profile retrieval
     try:
         print_info("Retrieving personality profile...")
         response = requests.get(
@@ -737,7 +715,6 @@ def test_analytics_endpoint():
         if response.status_code == 200:
             data = response.json()
             
-            # Check for required fields
             if "session_info" in data:
                 session_info = data["session_info"]
                 total_actions = session_info.get("total_actions", 0)
@@ -748,7 +725,6 @@ def test_analytics_endpoint():
                 )
                 results.add_result("Analytics Endpoint", True)
                 
-                # Validate game breakdown
                 if "game_breakdown" in data:
                     breakdown = data["game_breakdown"]
                     if breakdown:
@@ -777,7 +753,7 @@ def test_error_handling():
             "name": "Invalid Session ID",
             "endpoint": f"{API_URL}/personality/invalid_session_999",
             "method": "GET",
-            "expected_status": [200, 404]  # Either is acceptable
+            "expected_status": [200, 404]  
         },
         {
             "name": "Malformed JSON",
@@ -790,7 +766,7 @@ def test_error_handling():
             "name": "Missing Required Fields",
             "endpoint": f"{API_URL}/ml/fighting/predict",
             "method": "POST",
-            "data": {"aggression_rate": 0.5},  # Missing other fields
+            "data": {"aggression_rate": 0.5},  
             "expected_status": [400, 422]
         }
     ]
@@ -840,7 +816,6 @@ def test_error_handling():
 def test_performance():
     print_section("TEST 7: Performance & Response Times")
     
-    # Test rapid-fire requests
     print_info("Testing rapid-fire requests (10 concurrent)...")
     times = []
     
@@ -899,7 +874,6 @@ def test_performance():
 def test_ml_accuracy():
     print_section("TEST 8: ML Model Accuracy & Regularization Quality")
     
-    # Test with known player types and verify predictions
     accuracy_tests = [
         {
             "profile": "Ultra Aggressive",
@@ -936,11 +910,9 @@ def test_ml_accuracy():
                 confidence = data.get("confidence", 0)
                 confidence_scores.append(confidence)
                 
-                # Check if prediction matches expected keywords
                 matched = any(keyword.lower() in archetype.lower() for keyword in test["should_predict"])
                 
                 if matched:
-                    # ✅ FIXED: Confidence between 0.25-0.65 is IDEAL for regularized models
                     if 0.25 <= confidence <= 0.65:
                         print_pass(
                             f"{test['profile']} - EXCELLENT prediction",
@@ -976,7 +948,6 @@ def test_ml_accuracy():
     print(f"  Prediction Accuracy: {accuracy:.1f}%")
     print(f"  Average Confidence: {avg_confidence:.1%}")
     
-    # ✅ NEW: Proper evaluation of regularized models
     if accuracy >= 90:
         print_pass(f"Excellent accuracy: {accuracy:.1f}%", "Model predictions are highly reliable")
         results.add_result("ML Accuracy", True)
@@ -987,7 +958,6 @@ def test_ml_accuracy():
         print_fail(f"Low accuracy: {accuracy:.1f}%", "Model needs retraining")
         results.add_result("ML Accuracy", False)
     
-    # ✅ CRITICAL: Evaluate regularization quality correctly
     print()
     if 0.25 <= avg_confidence <= 0.65 and accuracy >= 66:
         print(f"{Colors.GREEN}  🎯 PERFECT REGULARIZATION!{Colors.RESET}")
@@ -1007,9 +977,6 @@ def test_ml_accuracy():
         print(f"{Colors.CYAN}  ℹ️  ACCEPTABLE: Model performance within normal range{Colors.RESET}")
 
 
-# ============================================================================
-# MAIN TEST RUNNER
-# ============================================================================
 def run_all_tests():
     print_header("🧪 COMPREHENSIVE ML SYSTEM TEST SUITE")
     print(f"{Colors.CYAN}Testing API at: {API_URL}{Colors.RESET}")
@@ -1017,7 +984,6 @@ def run_all_tests():
     
     start_time = time.time()
     
-    # Run all tests
     server_ok = test_server_online()
     if not server_ok:
         print(f"\n{Colors.RED}❌ Cannot proceed - Server is not running{Colors.RESET}")
@@ -1034,7 +1000,6 @@ def run_all_tests():
     test_performance()
     test_ml_accuracy()
     
-    # Print final summary
     duration = time.time() - start_time
     print_header("📊 TEST SUMMARY")
     
@@ -1044,13 +1009,11 @@ def run_all_tests():
     print(f"  {Colors.YELLOW}⚠️  Warnings: {results.warnings}{Colors.RESET}")
     print(f"  {Colors.CYAN}⏱️  Duration: {duration:.2f}s{Colors.RESET}\n")
     
-    # Calculate success rate
     total_tests = results.passed + results.failed
     success_rate = (results.passed / total_tests * 100) if total_tests > 0 else 0
     
     print(f"{Colors.BOLD}Success Rate: {success_rate:.1f}%{Colors.RESET}\n")
     
-    # Print detailed results
     print(f"{Colors.BOLD}Detailed Results:{Colors.RESET}")
     for test in results.tests:
         status_icon = "✅" if test['passed'] else "⚠️" if test['warning'] else "❌"
@@ -1059,7 +1022,6 @@ def run_all_tests():
         if test['message']:
             print(f"     {Colors.CYAN}→ {test['message']}{Colors.RESET}")
     
-    # CI/CD readiness check
     print_header("🚀 CI/CD READINESS")
     
     ci_cd_ready = True
@@ -1080,7 +1042,6 @@ def run_all_tests():
     
     print()
     
-    # ✅ NEW: More detailed readiness assessment
     if ci_cd_ready and results.failed == 0 and results.warnings == 0:
         print(f"{Colors.BOLD}{Colors.GREEN}🎉 SYSTEM PERFECT - READY FOR CI/CD DEPLOYMENT!{Colors.RESET}")
         print(f"{Colors.GREEN}All tests passed with no warnings. Excellent production readiness.{Colors.RESET}\n")
