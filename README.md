@@ -6,11 +6,11 @@ app_port: 7860
 
 # 🎮 Multi Game Arena
 
-# Multi-Game Arena: AI-Powered Gaming Platform
+# AI-Powered Gaming Platform
 
 A full-stack gaming platform featuring real-time personality analysis through machine learning. Players engage in three distinct game modes while an ML system analyzes their behavior patterns to create personalized AI opponents.
 
-**Live Demo:** [Demo Link] 
+**Live Demo:** [https://multi-game-arena.vercel.app/] 
 
 ---
 
