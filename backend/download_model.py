@@ -13,7 +13,6 @@ def main():
     print(f"📥 Starting model download from Hugging Face...")
     print(f"   URL: {MODEL_URL}")
     
-    # 1. Clean up old files
     if DESTINATION_ROOT.exists():
         os.remove(DESTINATION_ROOT)
     
@@ -24,7 +23,6 @@ def main():
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
         
-        # 3. Verify Download
         if not DESTINATION_ROOT.exists():
             print("❌ Error: Download failed (file not found).")
             sys.exit(1)
