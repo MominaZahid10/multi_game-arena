@@ -284,7 +284,7 @@ class MLPoweredAIOpponent:
                 self.server_ai_position['z'] = ai_z
             
             distance = np.sqrt((player_x - ai_x)**2 + (player_z - ai_z)**2)
-            if player_health == 100 and ai_health == 100 and distance > 8:
+            if player_health == 100 and ai_health == 100 and distance > 10:
                 self.server_ai_position = {'x': 4.5, 'z': 0}
                 ai_x, ai_z = 4.5, 0
             
