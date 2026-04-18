@@ -224,6 +224,9 @@ async def process_fighting_action(
         def save_player_action():
             try:
                 player_move_type = action_data.get('move_type', action_data.get('action_type', 'attack'))
+                # Skip polling requests - not real player moves, pollutes ML data
+                if player_move_type in ('ai_update', 'poll', 'ping'):
+                    return True
                 
                 player_action = PlayerAction(
                     session_id=session_id,
