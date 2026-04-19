@@ -1635,7 +1635,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
   // ============================================================================
   const [actionCount, setActionCount] = useState(0);
   const [lastPersonalityUpdate, setLastPersonalityUpdate] = useState<number>(0);
-  const API_BASE = 'http://localhost:8000/api/v1';
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
   
   // ============================================================================
   // 🎮 LIVE ACTION DISPLAY - For instructor demo
@@ -2805,7 +2805,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
                 </span>
               </div>
               <div className="mt-1 text-[9px] text-gray-500">
-                Backend: localhost:8000 • Model: 1.4GB
+                Backend: {(() => { try { return import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL as string).host : 'localhost:8000'; } catch { return 'localhost:8000'; } })()} • Model: 1.4GB
               </div>
             </div>
           </div>

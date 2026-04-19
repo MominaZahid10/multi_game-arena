@@ -1,6 +1,7 @@
 // frontend/src/components/WebSocketTest.tsx - UPDATED VERSION
 import React from 'react';
 import { useMultiGameWebSocket } from '../hooks/useMultiGameWebSocket';
+import { getWsBase } from '../lib/ws';
 
 export const WebSocketTest: React.FC = () => {
   const { 
@@ -165,7 +166,7 @@ export const WebSocketTest: React.FC = () => {
       <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
         <strong>Debug Info:</strong><br/>
         Session ID: test-session-123<br/>
-        WebSocket URL: ws://localhost:8000/ws/multi-game/test-session-123<br/>
+        WebSocket URL: {getWsBase()}/ws/multi-game/test-session-123<br/>
         Expected Backend Message Types: connection_established, analysis_update, game_switched, session_status
       </div>
     </div>

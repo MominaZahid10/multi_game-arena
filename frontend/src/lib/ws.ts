@@ -6,6 +6,17 @@ export type WSMessage =
   | { type: 'game_switched'; new_game: 'fighting' | 'badminton' | 'racing' }
   | { type: 'session_status'; status: string; [k: string]: unknown };
 
+/** Returns the WebSocket base URL (no trailing slash, no path). */
+export const getWsBase = (): string => {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL as string;
+  if (import.meta.env.VITE_API_URL) {
+    return (import.meta.env.VITE_API_URL as string)
+      .replace(/^http/, 'ws')
+      .replace(/\/api\/v1\/?$/, '');
+  }
+  return 'ws://localhost:8000';
+};
+
 export const connectMultiGameWS = (onMessage: (msg: WSMessage) => void, sessionId?: string) => {
   const sid = sessionId || getSessionId();
   const WS_URL = import.meta.env.VITE_WS_URL || `ws://localhost:8000/ws/multi-game/${sid}`;

@@ -120,7 +120,7 @@ const AnalyticsDashboard: React.FC<Props> = ({
           <h3 className="text-lg font-semibold mb-2 text-red-400">⚠️ Error Loading Analytics</h3>
           <p className="text-sm mb-4 text-red-300">{error}</p>
           <p className="text-xs text-gray-400 mt-3">
-            Make sure the backend server is running on http://localhost:8000
+            Make sure the backend server is running on {import.meta.env.VITE_API_URL || 'http://localhost:8000'}
           </p>
         </div>
       </div>
