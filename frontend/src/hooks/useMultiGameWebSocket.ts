@@ -1,5 +1,6 @@
 // hooks/useMultiGameWebSocket.ts - FIXED VERSION
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { getWsBase } from '../lib/ws';
 
 interface WebSocketMessage {
   type: string;
@@ -57,11 +58,7 @@ export const useMultiGameWebSocket = (sessionId: string, enabled: boolean = true
         wsRef.current.close();
       }
 
-      // FIX: Use correct WebSocket URL format
-      const wsBase = import.meta.env.VITE_WS_URL ||
-        (import.meta.env.VITE_API_URL
-          ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '')
-          : 'ws://localhost:8000');
+      const wsBase = getWsBase();
       const wsUrl = `${wsBase}/ws/multi-game/${sessionId}`;
       console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
       

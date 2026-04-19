@@ -2805,7 +2805,7 @@ const GameArena: React.FC<GameArenaProps> = ({ gameType, onGameChange, showAnaly
                 </span>
               </div>
               <div className="mt-1 text-[9px] text-gray-500">
-                Backend: {import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL).host : 'localhost:8000'} • Model: 1.4GB
+                Backend: {(() => { try { return import.meta.env.VITE_API_URL ? new URL(import.meta.env.VITE_API_URL as string).host : 'localhost:8000'; } catch { return 'localhost:8000'; } })()} • Model: 1.4GB
               </div>
             </div>
           </div>
