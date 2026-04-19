@@ -165,7 +165,7 @@ export const WebSocketTest: React.FC = () => {
       <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
         <strong>Debug Info:</strong><br/>
         Session ID: test-session-123<br/>
-        WebSocket URL: ws://localhost:8000/ws/multi-game/test-session-123<br/>
+        WebSocket URL: {(import.meta.env.VITE_WS_URL || (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '') : 'ws://localhost:8000'))}/ws/multi-game/test-session-123<br/>
         Expected Backend Message Types: connection_established, analysis_update, game_switched, session_status
       </div>
     </div>

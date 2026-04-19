@@ -58,7 +58,11 @@ export const useMultiGameWebSocket = (sessionId: string, enabled: boolean = true
       }
 
       // FIX: Use correct WebSocket URL format
-      const wsUrl = `ws://localhost:8000/ws/multi-game/${sessionId}`;
+      const wsBase = import.meta.env.VITE_WS_URL ||
+        (import.meta.env.VITE_API_URL
+          ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '')
+          : 'ws://localhost:8000');
+      const wsUrl = `${wsBase}/ws/multi-game/${sessionId}`;
       console.log(`🔌 Connecting to WebSocket: ${wsUrl}`);
       
       const ws = new WebSocket(wsUrl);

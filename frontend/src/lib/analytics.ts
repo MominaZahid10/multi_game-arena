@@ -1,7 +1,7 @@
 // lib/analytics.ts - FIXED SESSION ID with proper API integration
 import { BadmintonAction, FightingAction, GameAction, GameType, RacingAction, UnifiedPersonality, AIActionResponse } from './types';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
 // ✅ FIX: Use single consistent session ID format
 let sessionIdCache: string | null = null;
